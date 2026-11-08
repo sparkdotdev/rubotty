@@ -38,9 +38,8 @@
       <div id="rb-view"><%= yield %></div>
     </div>
     <footer class="bottom" id="rb-footer">
-      <b>rubotty</b> is in active development and may break. Report bugs on
-      <a href="https://github.com/sparkdotdev/rubotty">GitHub</a>. Source-available under the
-      <a href="<%= request.script_name %>/licence">PolyForm Strict License</a>.
+      Rubotty v<%= h(Rubotty::VERSION) %>. Copyright Spark Software Development, LLC.
+      Operation requires adherence to our <a href="https://github.com/sparkdotdev/rubotty/blob/main/LICENSE.MD">License Terms</a>.
     </footer>
   </div>
   <script id="rb-shell-data" type="application/json"><%= initial_shell_json %></script>

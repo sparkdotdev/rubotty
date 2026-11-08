@@ -55,12 +55,12 @@ Run `bundle exec ruby bin/rubotty run` for the relay and `bundle exec ruby bin/r
 Rubotty releases include the source and [Railpack build configuration](railpack.json). Install Docker and [Railpack 0.43.0](https://github.com/railwayapp/railpack/releases/tag/v0.43.0) on your build machine, then set `BUILDKIT_HOST` using the [Railpack BuildKit setup](https://railpack.com/getting-started/#building). Build from a release tag:
 
 ```sh
-git clone --branch v0.8.1 --depth 1 https://github.com/sparkdotdev/rubotty.git
+git clone --branch v0.8.2 --depth 1 https://github.com/sparkdotdev/rubotty.git
 cd rubotty
-railpack build --name rubotty:0.8.1 \
+railpack build --name rubotty:0.8.2 \
   --env "SOURCE_COMMIT=$(git rev-parse HEAD)" \
   --env BUNDLE_WITH=postgres:mariadb .
-docker image inspect rubotty:0.8.1 --format '{{.Id}}'
+docker image inspect rubotty:0.8.2 --format '{{.Id}}'
 ```
 
 The build includes Ruby, Lua, the dashboard assets and media tools. `BUNDLE_WITH` adds the optional PostgreSQL and MariaDB drivers alongside SQLite. Supply your bot credentials and private configuration at runtime. Run `bundle exec bin/rubotty run` for the relay and `bundle exec bin/rubotty web` for the web surface from the same image, with a shared database, persistent storage and a web health check at `/healthz`.

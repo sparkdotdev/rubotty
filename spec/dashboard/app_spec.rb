@@ -1984,9 +1984,6 @@ RSpec.describe Rubotty::Dashboard::App, :control_plane do
     end
   end
 
-  # PolyForm Strict grants a noncommercial right to run this, so operators are
-  # entitled to read the terms. The repository is private, so the footer's old
-  # GitHub link showed them a 404.
   describe "the licence page" do
     it "serves the standard licence and full contribution policy inline" do
       login!
@@ -1999,21 +1996,26 @@ RSpec.describe Rubotty::Dashboard::App, :control_plane do
         .and include("Rubotty Deployment Addendum 1.0.0")
     end
 
-    it "is what the footer points at" do
+    it "shows the running version and links the footer to the public licence" do
+      stub_const("Rubotty::VERSION", "1.2.3+fixture")
       login!
       get "/"
 
-      expect(last_response.body).to include(%(href="/licence"))
+      footer = last_response.body[%r{<footer[^>]*id="rb-footer".*?</footer>}m]
+      expect(footer).to include("Rubotty v1.2.3+fixture. Copyright Spark Software Development, LLC.")
+      expect(footer).to include(
+        %(Operation requires adherence to our <a href="https://github.com/sparkdotdev/rubotty/blob/main/LICENSE.MD">License Terms</a>.)
+      )
     end
 
     # Derived from the map rather than spelled out, so adding a route there is
     # covered without anyone remembering to widen this.
-    it "keeps every document it serves off the private repository URL" do
+    it "uses local links inside the rendered documents" do
       login!
       get "/documentation"
       documentation = last_response.body
       get "/licence"
-      rendered = documentation + last_response.body
+      rendered = (documentation + last_response.body).gsub(%r{<footer[^>]*id="rb-footer".*?</footer>}m, "")
 
       Rubotty::Dashboard::ReadmeRenderer::IN_APP_DOCS.each do |target, _route|
         expect(rendered).not_to include("github.com/sparkdotdev/rubotty/blob/main/#{target}")
