@@ -1,0 +1,134 @@
+<h1><%= h(@community.name) %>: guest portal</h1>
+<%= no_rooms_notice(@community) %>
+
+<div class="card">
+  <p class="muted">
+    A <strong>guest invite</strong> is a time-bounded, room-scoped link. The guest opens it and gets a
+    minimal web chat merged across the whole bridged room: they read messages from every platform in it and
+    send plain text, relayed to every one of those platforms as <code>Nickname@guest-user</code>. No history
+    before they join, no commands, no dashboard. When the link expires or you revoke it, the session ends.
+  </p>
+</div>
+
+<% if @issued_link %>
+  <div class="card">
+    <h2>Guest link for <%= h(@issued_nickname) %></h2>
+    <p class="muted">Copy this now. For the guest's safety it is shown once and never stored in full.</p>
+    <input type="text" readonly value="<%= h(redact_secret(@issued_link)) %>" style="width:100%;"
+           onclick="this.select()">
+  </div>
+<% end %>
+
+<div class="card">
+  <h2>Room access</h2>
+  <p class="muted">
+    Guests are allowed only in rooms you turn on here; every channel bridged into a room inherits its setting.
+    <strong>Who can invite</strong> is <code>operators</code> (the default) or <code>everyone</code>; an
+    operator can always invite where guests are allowed, and <code>everyone</code> additionally lets a normal
+    member invite.
+  </p>
+  <% if @room_access.empty? %>
+    <p class="muted">
+      This community has no rooms, so there is nothing to allow guests in yet. A guest session is scoped to a
+      room; map a channel into one (a room may hold a single channel) and it appears here.
+    </p>
+  <% else %>
+    <table>
+      <thead><tr><th>Room</th><th>Guests allowed</th><th>Who can invite</th><th></th></tr></thead>
+      <tbody>
+        <% @room_access.each do |entry| %>
+          <% room = entry[:room] %>
+          <tr>
+            <td><code><%= h(room.label.to_s.empty? ? room.room_key : room.label) %></code></td>
+            <td><span class="pill <%= entry[:allowed] ? "on" : "off" %>"><%= entry[:allowed] ? "on" : "off" %></span></td>
+            <td><%= h(entry[:who_can_invite]) %></td>
+            <td>
+              <form class="inline" method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/guests/access">
+                <input type="hidden" name="room" value="<%= h(room.room_key) %>">
+                <select name="allowed">
+                  <option value="on" <%= entry[:allowed] ? "selected" : "" %>>allow</option>
+                  <option value="off" <%= entry[:allowed] ? "" : "selected" %>>disallow</option>
+                </select>
+                <select name="who_can_invite">
+                  <option value="operators" <%= entry[:who_can_invite] == "operators" ? "selected" : "" %>>operators</option>
+                  <option value="everyone" <%= entry[:who_can_invite] == "everyone" ? "selected" : "" %>>everyone</option>
+                </select>
+                <%= act_button("Save", :manage_guests, community: @community, style: "secondary") %>
+              </form>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+</div>
+
+<div class="card">
+  <h2>Issue a guest link</h2>
+  <% if @room_access.empty? %>
+    <p class="muted">This community has no rooms yet, so no guest link can be framed for one.</p>
+  <% elsif @allowed_rooms.empty? %>
+    <p class="muted">No room allows guests yet. Turn on guest access for a room above first.</p>
+  <% else %>
+    <form method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/guests">
+      <div class="row">
+        <div>
+          <label>Room</label>
+          <select name="room">
+            <% @allowed_rooms.each do |room| %>
+              <option value="<%= h(room.room_key) %>">
+                <%= h(room.label.to_s.empty? ? room.room_key : room.label) %>
+              </option>
+            <% end %>
+          </select>
+        </div>
+        <div>
+          <label>Guest nickname</label>
+          <input type="text" name="nickname" maxlength="80" placeholder="Visiting Reviewer">
+        </div>
+        <div>
+          <label>Lifetime (hours)</label>
+          <input type="text" name="ttl_hours" value="24" style="width:6rem;">
+        </div>
+        <div>
+          <%= act_button("Issue link", :manage_guests, community: @community) %>
+        </div>
+      </div>
+    </form>
+  <% end %>
+</div>
+
+<div class="card">
+  <h2>Invites</h2>
+  <% if @invites.empty? %>
+    <p class="muted">No guest invites yet.</p>
+  <% else %>
+    <table>
+      <thead><tr><th>Guest</th><th>Room</th><th>State</th><th>Expires</th><th>Issued by</th><th></th></tr></thead>
+      <tbody>
+        <% @invites.each do |entry| %>
+          <% invite = entry[:row] %>
+          <tr>
+            <td><%= h(invite.nickname) %><code>@<%= h(Rubotty::Core::SenderLabel::GUEST_DOMAIN) %></code></td>
+            <td><code><%= h(entry[:room] && (entry[:room].label.to_s.empty? ? entry[:room].room_key : entry[:room].label)) %></code></td>
+            <td>
+              <span class="pill <%= entry[:state] == "live" ? "on" : "off" %>"><%= h(entry[:state]) %></span>
+            </td>
+            <td><%= h(invite.expires_at) %></td>
+            <td><%= h(invite.created_by) %></td>
+            <td>
+              <% if entry[:state] == "live" %>
+                <form class="inline" method="post"
+                      action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/guests/<%= invite.id %>/revoke">
+                  <%= act_button("Revoke", :manage_guests, community: @community, style: "danger") %>
+                </form>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+</div>
+
+<%= erb :_leftover_config, layout: false %>

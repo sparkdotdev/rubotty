@@ -1,0 +1,39 @@
+<%# The schema keys a bespoke page does not draw itself, rendered underneath %>
+<%# its own controls and posted to the generic per-feature config route. %>
+<% if @leftover_fields.any? %>
+  <div class="card" id="schema-config">
+    <h2>Other <%= h(@leftover_feature.tr("_", " ")) %> settings</h2>
+    <p class="muted">
+      The rest of what <code><%= h(@leftover_feature) %></code> declares, for one scope at a time. The controls
+      above cover what this page is built around; these are the remaining keys, drawn from the feature's own
+      schema, so one added later shows up here without anybody having to remember this page. A blank field is
+      left alone on save, so nothing is cleared by accident; emptying a list that had entries is the one
+      exception, and stores the empty list that turns that setting off. The value shown is what this scope
+      actually runs at right now, its own override where one is set, otherwise the feature's own default.
+    </p>
+    <form method="get" action="<%= request.script_name %><%= h(request.path_info) %>">
+      <%= leftover_scope_carry %>
+      <div class="row">
+        <div>
+          <label>Scope</label>
+          <select name="config_scope">
+            <% @leftover_scopes.each do |scope| %>
+              <option value="<%= h(scope[:value]) %>" <%= scope[:value] == @leftover_scope ? "selected" : "" %>><%= h(scope[:label]) %></option>
+            <% end %>
+          </select>
+        </div>
+        <div style="align-self:flex-end;"><button class="secondary" type="submit">View</button></div>
+      </div>
+    </form>
+    <form id="schema-config-form" method="post"
+          action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/features/<%= h(@leftover_feature) %>/config">
+      <input type="hidden" name="selector" value="<%= h(@leftover_scope) %>">
+      <input type="hidden" name="return_to" value="<%= h(leftover_return_token) %>">
+      <%= erb :_config_fields, layout: false,
+              locals: { fields: @leftover_fields, config: @leftover_config, feature: @leftover_feature } %>
+      <div class="row" style="margin-top:0.6rem;">
+        <div><%= act_button("Save", :"configure_#{@leftover_feature}", community: @community) %></div>
+      </div>
+    </form>
+  </div>
+<% end %>

@@ -1,0 +1,114 @@
+<h1><%= h(@community.name) %>: scripts</h1>
+
+<%= notice("A script that is on runs on real messages. It sits immediately before the bridge, so a rule " \
+           "that rejects or rewrites gets the last word on what the other platforms see, and turning the " \
+           "Scripts feature off for a room stops all of them at once.",
+           tone: :warning) %>
+
+<% unless @runtime_available %>
+  <%= notice("No Lua interpreter is installed on this deployment, so nothing here can be checked or run. " \
+             "Scripts can still be written and saved.",
+             tone: :warning) %>
+<% end %>
+
+<%= help_disclosure(
+      ["You can write commands, hooks and processors in Lua that react to sent messages and let you " \
+       "build whatever your community needs. Scripts are stored here rather than in a file, so they " \
+       "survive a redeploy.",
+       "Saving is always allowed, including half finished work. Turning one on is not: it has to pass a " \
+       "check against a handful of awkward inputs first, and editing it afterwards puts it back to " \
+       "unchecked, because the check applies to the exact text that passed it.",
+       "Everything here is provisional while it is in alpha: the function list, what a script is handed " \
+       "and the shape it returns can all change in ways that break scripts you have already written. Do " \
+       "not build anything you would be upset to rewrite."],
+      action: :view_scripts, community: @community,
+      reference: ["Read the scripting reference", url("/documentation")],
+      title: "About scripts"
+    ) %>
+
+<div class="card">
+  <a href="<%= url("/communities/#{@community.slug}/scripts/new") %>"><button type="button">Write a script</button></a>
+</div>
+
+<% if @scripts.empty? %>
+  <div class="card muted">No scripts yet.</div>
+<% else %>
+  <div class="card">
+    <table>
+      <thead><tr><th>Name</th><th>Kind</th><th>Trigger</th><th>State</th><th></th></tr></thead>
+      <tbody>
+        <% @scripts.each do |script| %>
+          <% verified = deps.scripts.verified?(script) %>
+          <% live = deps.scripts.runnable?(script) %>
+          <tr>
+            <td>
+              <a href="<%= url("/communities/#{@community.slug}/scripts/#{script.id}") %>"><%= h(script.name) %></a>
+              <% if script.language.to_s == "moonscript" %><div class="muted">MoonScript</div><% end %>
+            </td>
+            <td><%= h(script.kind) %></td>
+            <td><code><%= h(script.trigger_type) %></code></td>
+            <td>
+              <span class="pill <%= live ? "on" : "off" %>"><%= live ? "on" : "off" %></span>
+              <% if script.disabled_at %>
+                <div class="muted">switched off automatically: <%= h(script.disabled_reason) %></div>
+              <% elsif !verified %>
+                <div class="muted">not checked since it was last edited</div>
+              <% end %>
+            </td>
+            <td>
+              <% if live %>
+                <form class="inline" method="post"
+                      action="<%= url("/communities/#{@community.slug}/scripts/#{script.id}/disable") %>">
+                  <%= act_button("Turn off", :manage_scripts, community: @community, style: "secondary") %>
+                </form>
+              <% else %>
+                <form class="inline" method="post"
+                      action="<%= url("/communities/#{@community.slug}/scripts/#{script.id}/enable") %>">
+                  <%= act_button("Turn on", :manage_scripts, community: @community, enabled: verified) %>
+                </form>
+              <% end %>
+              <form class="inline" method="post"
+                    action="<%= url("/communities/#{@community.slug}/scripts/#{script.id}/delete") %>">
+                <%= act_button("Delete", :manage_scripts, community: @community, style: "danger") %>
+              </form>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>
+
+<% unless @archived.empty? %>
+  <div class="card">
+    <h2>Deleted</h2>
+    <p class="muted">
+      Deleting keeps the text. Restoring brings one back switched off and unchecked, because the room may
+      have moved on while it sat here, and under a free name if something has taken its old one.
+    </p>
+    <table>
+      <thead><tr><th>Name</th><th>Kind</th><th>Trigger</th><th></th></tr></thead>
+      <tbody>
+        <% @archived.each do |script| %>
+          <tr>
+            <td><%= h(script.name) %></td>
+            <td><%= h(script.kind) %></td>
+            <td><code><%= h(script.trigger_type) %></code></td>
+            <td>
+              <form class="inline" method="post"
+                    action="<%= url("/communities/#{@community.slug}/scripts/#{script.id}/restore") %>">
+                <%= act_button("Restore", :manage_scripts, community: @community) %>
+              </form>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>
+
+<%# What the scripts here recorded for themselves. Community wide, since a
+    stat row names no script, and drawn only once something has been
+    recorded. It used to sit on the analytics page, among numbers rubotty
+    counts by itself. %>
+<%= script_stats_section(@script_stats) %>

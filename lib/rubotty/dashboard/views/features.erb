@@ -1,0 +1,85 @@
+<h1><%= h(@community.name) %>: features</h1>
+
+<%= notice("A scope of all is the community-wide default every room inherits, and a per-room scope " \
+           "overrides it for every channel bridged into that room.",
+           tone: :info) %>
+
+<%= help_disclosure(
+      ["A feature with nothing set here runs at its code default, which is off for everything except " \
+       "the bridge.",
+       "Toggle a feature in place below. Every feature with anything to configure carries a Config link " \
+       "right beside its toggle, whether its settings live on their own richer page (word filter, FAQ, " \
+       "events, guests, people) or on the generic form; expand a row for a summary of what is set, and " \
+       "for a feature without a richer page the same keys editable in place."],
+      action: :view_community, community: @community,
+      title: "About scopes and defaults"
+    ) %>
+
+<div class="card">
+  <form method="get" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/features">
+    <div class="row">
+      <div>
+        <label>Scope</label>
+        <select name="scope">
+          <% @scopes.each do |scope| %>
+            <option value="<%= h(scope[:value]) %>" <%= scope[:value] == @scope ? "selected" : "" %>><%= h(scope[:label]) %></option>
+          <% end %>
+        </select>
+      </div>
+      <div>
+        <button type="submit">View</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Scope <code><%= h(@scope) %></code></h2>
+  <% if @feature_rows.empty? %>
+    <%= notice("No known features.", tone: :empty) %>
+  <% else %>
+    <% Rubotty::Dashboard::FeatureDisplay::CATEGORIES.each do |key, title| %>
+      <% rows = @feature_categories[key] %>
+      <% next if rows.empty? %>
+      <%= section(variant: :collapsible, title: title, body: render_feature_rows(rows)) %>
+    <% end %>
+    <%= render_feature_rows(@feature_categories[:rest]) %>
+  <% end %>
+</div>
+
+<div class="card">
+  <h2>Set a config key</h2>
+  <p class="muted">
+    An advanced escape hatch for a config key that has no dedicated editor yet. Merges one key into the
+    feature's config blob at the chosen scope. Values are coerced: <code>true</code>/<code>42</code> become a
+    boolean/number, a comma list becomes an array, valid JSON is parsed, anything else stays a string.
+  </p>
+  <form method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/features">
+    <div class="row">
+      <div>
+        <label>Scope</label>
+        <select name="selector">
+          <% @scopes.each do |scope| %><option value="<%= h(scope[:value]) %>" <%= scope[:value] == @scope ? "selected" : "" %>><%= h(scope[:label]) %></option><% end %>
+        </select>
+      </div>
+      <div>
+        <label>Feature</label>
+        <select name="feature">
+          <% @features.each do |feature| %><option value="<%= h(feature) %>"><%= h(Rubotty::Dashboard::FeatureDisplay.name_for(feature)) %></option><% end %>
+        </select>
+      </div>
+      <div>
+        <label>Key</label>
+        <input type="text" name="key" placeholder="posture">
+      </div>
+      <div>
+        <label>Value</label>
+        <input type="text" name="value" placeholder="block_invites">
+      </div>
+      <div>
+        <%# The feature is picked from the dropdown, so this is live if any of them is writable here. %>
+        <%= act_button("Set", @features.map { |name| :"configure_#{name}" }, community: @community, name: "op", value: "set") %>
+      </div>
+    </div>
+  </form>
+</div>

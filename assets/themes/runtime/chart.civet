@@ -1,0 +1,51 @@
+// Standard charts, with an accessible data table under every decorative figure.
+import { escapeHtml } from "./primitives.civet"
+import { figure } from "./chart-renderer.civet"
+
+CHART_SHAPES := ["categorical_distribution", "time_series", "share_of_total"]
+RING_SLICES := 6
+RING_REST := "Other"
+
+function ringRows(rows: any[]): any[]
+  live := rows.filter (row: any) => row.count > 0
+  return live if live.length <= RING_SLICES
+
+  rest := live.slice(RING_SLICES - 1).reduce ((sum: number, row: any) => sum + row.count), 0
+  live.slice(0, RING_SLICES - 1).concat [{ label: RING_REST, count: rest }]
+
+// Shares include every positive row, with the tail combined into Other.
+function chartRows(rows: any[], shape: string, limit: number): any[]
+  shape is "share_of_total" ? ringRows(rows) : rows.slice(0, limit)
+
+// The numbers underneath, and the accessible half of the whole primitive:
+// the figure itself is decoration, so a reader who cannot see it still gets
+// every value. Mirrors Primitives::Identity#chart_table.
+function chartTable(rows: any[]): string
+  body := rows.map((row: any) =>
+    `<tr><th scope="row">${escapeHtml(row.label)}</th>` +
+      `<td class="rb-align-end">${escapeHtml(row.count)}</td></tr>`
+  ).join ""
+  `<table class="rb-chart-table"><thead><tr><th>Label</th>` +
+    `<th class="rb-align-end">Count</th></tr></thead><tbody>${body}</tbody></table>`
+
+// Rows are cleaned identically for initial server hydration and client navigation.
+function chart(rows: any, opts: any = {}): string
+  shape := opts.shape
+  throw new Error "missing keyword: :shape" if shape is null or shape is undefined
+  unless CHART_SHAPES.includes shape
+    throw new Error `unknown chart shape ${JSON.stringify(shape)}, expected one of ${CHART_SHAPES.join(", ")}`
+
+  list := chartRows(
+    (Array.isArray(rows) ? rows : []).map (row: any) =>
+      { label: String(row.label ?? ""), count: Math.trunc(Number(row.count)) or 0 }
+    shape, opts.limit ?? 10
+  )
+  return `<p class="rb-notice rb-notice--empty">${escapeHtml(opts.empty ?? "Nothing yet.")}</p>` if list.length is 0
+
+  title := opts.title
+  heading := title ? `<figcaption class="rb-chart-title">${escapeHtml(title)}</figcaption>` : ""
+  `<figure class="rb-chart">${heading}` +
+    `<div class="rb-chart-figure" aria-hidden="true" data-shape="${escapeHtml(shape)}">` +
+    `${figure(list, shape)}</div>${chartTable(list)}</figure>`
+
+export { CHART_SHAPES, RING_SLICES, chart, chartRows, chartTable }

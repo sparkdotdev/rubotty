@@ -1,0 +1,19 @@
+<%# One typed input per schema field, shared by the generic config form and %>
+<%# by every bespoke page rendering the keys it does not draw itself. %>
+<% fields.each do |field| %>
+  <% value = config_field_value(field, config) %>
+  <% entry_schema = field.type == :array ? mapping_entry_schema(field) : nil %>
+  <div class="cfg-field">
+    <label><%= h(config_field_label(field)) %><%= field.required ? " *" : "" %></label>
+    <% if field.description %><p class="note"><%= h(field.description) %></p><% end %>
+    <% if entry_schema %>
+      <%= erb :_config_mapping_list, layout: false,
+              locals: { field: field, schema: entry_schema, value: value, feature: feature } %>
+    <% elsif field.type == :array %>
+      <textarea name="<%= h(field.name) %>" rows="3"><%= h(config_field_lines(value)) %></textarea>
+      <p class="note"><%= h(config_field_entry_hint(field)) %></p>
+    <% else %>
+      <%= erb :_config_input, layout: false, locals: { field: field, name: field.name.to_s, value: value } %>
+    <% end %>
+  </div>
+<% end %>

@@ -1,0 +1,197 @@
+// The swatch contract. $roles is the only place the role set is written down:
+// spec/dashboard/swatch_contract_spec.rb parses this list out of this file, so
+// adding a role here is what makes every swatch owe a value for it.
+
+@use "sass:list";
+@use "sass:map";
+
+// fill and fill-strong are the two steps between surface and content-text
+// that a control fill, a key/value panel and a code block land on;
+// border-strong is the heavier of the two rules. Named rather than mixed from
+// surface and content-text, because a neutral ramp does not sit on the line
+// between those two: a warm ramp mixed that way comes out grey. bg-hover is
+// the fourth surface step, for a plain hover feedback that is not an accent
+// wash.
+//
+// faint-text is the third ink step, under muted-text, for the micro-labels a
+// dense theme puts over every block. border-bright is the stronger rule a
+// theme uses for controls and tags. info is the explanatory tone, and it is
+// here because accent-secondary was standing in for it and reads as an alert
+// on any swatch whose accent is red.
+//
+// accent-fg splits off on-accent because one text colour cannot clear 4.5:1
+// against every solid fill a theme puts it on: accent-fg reads on the accent
+// fill, on-accent keeps reading on danger, warning and success. A swatch whose
+// accent genuinely needs a different ink than its other tones now has
+// somewhere to put it, rather than diluting the accent fill to save the one
+// ink both were sharing.
+//
+// The seven code-* roles are a syntax palette (background, body text, a
+// comment tone and four token colours) for the code surface a theme draws its
+// own way, not a diff against fill: a listing wants to look like a fixed
+// panel regardless of the page's own light or dark mode.
+//
+// bg-sidebar and bg-sunken are two more graduated surface steps, between
+// background and border, for a rail or an inset panel that wants to read as
+// a shade lower than the page without reaching all the way to a fill.
+//
+// The five *-tint roles are a declared, opaque wash for the accent and each
+// status tone, so a themed pill or a current nav item stops mixing one from
+// scratch at the point it draws them: accent-tint and accent-tint-strong are two
+// depths of the same wash (a nav item's rest state and its stronger hover),
+// accent-tint-border is the rule that sits on top of accent-tint, and
+// success-tint, warning-tint, info-tint and danger-tint are each tone's own
+// wash, at the depth a status pill actually draws on, not the page behind it.
+$roles:
+  background,
+  surface,
+  fill,
+  fill-strong,
+  bg-hover,
+  bg-sidebar,
+  bg-sunken,
+  content-text,
+  header-text,
+  muted-text,
+  faint-text,
+  accent-primary,
+  accent-secondary,
+  accent-fg,
+  on-accent,
+  accent-tint,
+  accent-tint-strong,
+  accent-tint-border,
+  border,
+  border-bright,
+  border-strong,
+  danger,
+  success,
+  warning,
+  info,
+  danger-tint,
+  success-tint,
+  warning-tint,
+  info-tint,
+  code-bg,
+  code-fg,
+  code-comment,
+  code-fn,
+  code-keyword,
+  code-number,
+  code-string,
+  focus-ring,
+  overlay-scrim,
+  series;
+
+// The weight a role carries when it reaches a CSS declaration. A ground holds
+// text, an ink is written over one, a rule draws a boundary, and a fill may do
+// either job when it carries its paired foreground. The contract spec reads
+// this map alongside $roles, so a role cannot acquire a second meaning in one
+// stylesheet by accident.
+$weights: (
+  background: ground,
+  surface: ground,
+  fill: ground,
+  fill-strong: ground,
+  bg-hover: ground,
+  bg-sidebar: ground,
+  bg-sunken: ground,
+  content-text: ink,
+  header-text: ink,
+  muted-text: ink,
+  faint-text: ink,
+  accent-primary: fill,
+  accent-secondary: fill,
+  accent-fg: ink,
+  on-accent: ink,
+  accent-tint: ground,
+  accent-tint-strong: ground,
+  accent-tint-border: rule,
+  border: rule,
+  border-bright: rule,
+  border-strong: rule,
+  danger: ink,
+  success: ink,
+  warning: ink,
+  info: ink,
+  danger-tint: ground,
+  success-tint: ground,
+  warning-tint: ground,
+  info-tint: ground,
+  code-bg: ground,
+  code-fg: ink,
+  code-comment: ink,
+  code-fn: ink,
+  code-keyword: ink,
+  code-number: ink,
+  code-string: ink,
+  focus-ring: rule,
+  overlay-scrim: ground,
+  series: fill
+);
+
+// The series role holds an ordered list rather than one colour, and this is how
+// long it has to be. Six, because the charts here are simple and a reader stops
+// reliably matching a swatch to a legend somewhere around that many.
+$series-length: 6;
+
+// Fails the compile when a mode's map is not exactly the role set.
+@mixin _check($mode, $colours) {
+  $given: map.keys($colours);
+
+  @each $role in $roles {
+    @if not list.index($given, $role) {
+      @error "The #{$mode} set is missing the #{$role} role.";
+    }
+  }
+
+  @each $role in $given {
+    @if not list.index($roles, $role) {
+      @error "The #{$mode} set names #{$role}, which is not a swatch role.";
+    }
+  }
+
+  $series: map.get($colours, series);
+
+  @if list.length($series) != $series-length {
+    @error "The #{$mode} series palette has #{list.length($series)} colours, and the contract is #{$series-length}.";
+  }
+}
+
+@mixin _declare($colours) {
+  @each $role, $value in $colours {
+    @if $role == series {
+      @for $index from 1 through list.length($value) {
+        --rb-series-#{$index}: #{list.nth($value, $index)};
+      }
+    } @else {
+      --rb-#{$role}: #{$value};
+    }
+  }
+}
+
+// Writes one swatch out. Light is the base, dark applies under the OS
+// preference, and an explicit data-theme on the root outranks both of those on
+// specificity alone, so it wins whichever way the OS is set.
+@mixin emit($light, $dark) {
+  @include _check("light", $light);
+  @include _check("dark", $dark);
+
+  :root {
+    @include _declare($light);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      @include _declare($dark);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    @include _declare($dark);
+  }
+
+  :root[data-theme="light"] {
+    @include _declare($light);
+  }
+}

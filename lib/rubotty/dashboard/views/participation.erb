@@ -1,0 +1,50 @@
+<h1><%= h(@community.name) %>: room games</h1>
+
+<div class="card muted">
+  What a script has running in each room through <code>rubotty.open_session</code>: its kind, how
+  many rounds it has run, and the round in front of it now. Rubotty holds a session and a round and
+  nothing about what either is for, so there is no scoreboard to show here, a script keeps its own in
+  a bucket <code>rubotty.entries</code> reads. Closing a session here does exactly what the script's
+  own <code>close_session</code> call would: it ends the open round too, and the rows stay readable
+  until they age out.
+</div>
+
+<% if @rooms.empty? %>
+  <div class="card muted">No rooms mapped yet.</div>
+<% else %>
+  <% @rooms.each do |entry| %>
+    <% room = entry[:room] %>
+    <% session = entry[:session] %>
+    <% round = entry[:round] %>
+    <div class="card">
+      <h2><%= h(room.label.to_s.empty? ? room.room_key : room.label) %>
+        <span class="muted">(<%= h(room.room_key) %>)</span></h2>
+
+      <% if session.nil? %>
+        <p class="muted">Nothing is running in this room.</p>
+      <% else %>
+        <p>
+          <strong><%= h(session["kind"]) %></strong><% unless session["label"].to_s.empty? %>: <%= h(session["label"]) %><% end %>
+          <br>
+          <span class="muted">
+            <%= session["rounds"] %> round<%= "s" unless session["rounds"] == 1 %>
+          </span>
+        </p>
+
+        <% if round.nil? %>
+          <p class="muted">No round is open right now.</p>
+        <% else %>
+          <p class="muted">
+            Round <%= round["position"] %>, opened <%= h(Time.at(round["opened_at"]).utc.strftime("%Y-%m-%d %H:%M UTC")) %>
+            <% if round["closes_at"] %>, closes <%= h(Time.at(round["closes_at"]).utc.strftime("%Y-%m-%d %H:%M UTC")) %><% end %>
+          </p>
+        <% end %>
+
+        <form method="post"
+              action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/participation/<%= room.id %>/close">
+          <%= act_button("Close session", :manage_participation, community: @community, style: "danger") %>
+        </form>
+      <% end %>
+    </div>
+  <% end %>
+<% end %>

@@ -1,0 +1,9 @@
+{
+  "name": "rubotty",
+  "description": "Buildpack order for a Heroku build (issue #347). apt comes first so lua5.4 is on PATH for everything after it (the sandbox's one rock ships vendored in the repository instead, since Ubuntu packages no MessagePack build and this stack's LuaRocks cannot reach Lua 5.4 at all); nodejs next, because its build script produces the dashboard bundles that are gitignored and have to be built at deploy time; ruby last, because the last buildpack in the list owns the process types the Procfile declares. Heroku reads this file when an app is CREATED (Heroku Button, Review Apps, Heroku CI) and ignores it on later pushes, so an app that already exists needs the same order set once by hand: heroku buildpacks:set heroku-community/apt, then heroku buildpacks:add heroku/nodejs, then heroku buildpacks:add heroku/ruby. Ruby's own version is pinned in .ruby-version, which is the one thing this file cannot fix.",
+  "buildpacks": [
+    { "url": "heroku-community/apt" },
+    { "url": "heroku/nodejs" },
+    { "url": "heroku/ruby" }
+  ]
+}

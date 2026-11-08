@@ -1,0 +1,75 @@
+// The shell contract: chrome around a page, and how a required theme takes it
+// over. The server keeps an unpainted staging node; a theme's own chrome,
+// drawn here, gets the page MOVED into it, so an unported ERB screen still
+// works inside a themed shell.
+//
+//   chrome(nav, view): string    the whole chrome, as one HTML string
+//   slots: { content, footer? }  CSS selectors inside that chrome
+//   bind?(context): void         wire the chrome's own controls
+//   update?(context): boolean    patch the chrome for a fresh nav or view
+//
+// nav comes from Nav and GET /internal/shell; view is the current section's
+// drawn document, null before the first navigation, for a chrome that
+// projects part of it beside the nav. Class names: Primitives::Shell::CLASSES.
+
+// Where the shell document is read from, under the internal prefix.
+SHELL_SOURCE := "/shell"
+
+// The pieces of chrome named by the shared view vocabulary.
+SHELL_ROLES := ["root", "brand", "scope", "nav", "crumbs", "identity", "search", "content"]
+
+// The element a declared slot points at. A slot the chrome does not actually
+// draw is a wiring bug in the theme, and it fails loudly here rather than
+// silently dropping the page on the floor.
+function slotIn(root: any, selector: string): any
+  found := root.querySelector selector
+  unless found
+    throw new Error `The shell declares the slot ${selector}, which its chrome does not draw`
+
+  found
+
+// Move a node the server already rendered into the chrome. Moved, not copied:
+// the page keeps its identity, so #rb-view stays the same element a themed
+// draw() replaces the contents of.
+function adopt(root: any, selector: string, node: any): void
+  return unless node
+
+  slotIn(root, selector).appendChild node
+
+// The scope the reader is in: the community they have open, or the deployment
+// around it when they have none.
+function currentScope(nav: any): any
+  scopes := nav?.scopes ?? []
+  scopes.find((scope: any) => scope.current) ?? scopes[0] ?? null
+
+// The scopes they are not in, which is what a scope switcher offers.
+function otherScopes(nav: any): any[]
+  (nav?.scopes ?? []).filter (scope: any) => !scope.current
+
+// Every entry of one scope, flattened out of its groups, for a theme that
+// draws a flat rail rather than headed sections.
+function scopeItems(scope: any): any[]
+  (scope?.groups ?? []).flatMap (group: any) => group.items ?? []
+
+// The crumbs a chrome with room for `limit` of them draws, deepest last. The
+// root is always among them, since it is the way back out to the deployment
+// index and a plain tail slice drops it on every nested route.
+function visibleCrumbs(nav: any, limit: number = 3): any[]
+  trail := nav?.crumbs ?? []
+  return trail if limit < 2 or trail.length <= limit
+
+  [trail[0], ...trail.slice(1 - limit)]
+
+// Whether the shell document describes a real, signed-in operator.
+// signed_out_shell sends no logout_path, which is the one honest signal a
+// theme's own chrome has that the identity slot is a placeholder rather than
+// somebody who is actually signed in: draw the identity from this rather
+// than from operator.label, which stays a display string ("Sign in") that
+// reads like a name if a chrome shows it regardless.
+function signedIn(nav: any): boolean
+  !!(nav?.logout_path)
+
+export {
+  SHELL_SOURCE, SHELL_ROLES, slotIn, adopt, currentScope, otherScopes,
+  scopeItems, visibleCrumbs, signedIn
+}

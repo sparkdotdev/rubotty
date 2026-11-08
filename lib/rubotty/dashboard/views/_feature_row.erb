@@ -1,0 +1,31 @@
+<%# A feature row's own collapsed body: what this scope keeps if enabled, %>
+<%# its current config as a summary, and, for a feature whose config does %>
+<%# not live on its own bespoke page, the same keys editable in place. %>
+<% retention = Rubotty::Features::Catalog.retention_notice(row[:feature]) %>
+<% if retention %>
+  <p class="note"><strong>What this keeps:</strong> <%= h(retention) %></p>
+<% end %>
+<%# Full width rather than a narrow side column: a list-valued key like %>
+<%# events' reminder ladder otherwise stacks one badge per line for as %>
+<%# many lines as it has entries. %>
+<div class="cfg-summary">
+  <%= config_summary(row[:config]) %>
+  <% schema = Rubotty::Features::Catalog.class_for(row[:feature])&.config_schema %>
+  <% if schema && feature_config_expandable?(row[:feature]) %>
+    <form method="post"
+          action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/features/<%= h(row[:feature]) %>/config">
+      <input type="hidden" name="selector" value="<%= h(@scope) %>">
+      <input type="hidden" name="return_to" value="<%= features_return_token %>">
+      <%= erb :_config_fields, layout: false,
+              locals: { fields: schema.fields.each_value.to_a, config: row[:config], feature: row[:feature] } %>
+      <div class="row cfg-editor-submit">
+        <div><%= act_button("Save", :"configure_#{row[:feature]}", community: @community) %></div>
+      </div>
+    </form>
+  <% end %>
+  <%# Every configurable feature's Config link lives in the row summary %>
+  <%# next to its toggle (see App#feature_summary_config_link): reaching it %>
+  <%# never needed the row expanded in the first place. The form above is a %>
+  <%# shortcut for editing the same keys without leaving the list, not the %>
+  <%# only way to them. %>
+</div>

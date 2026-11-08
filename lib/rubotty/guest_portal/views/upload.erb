@@ -1,0 +1,14 @@
+<div class="center">
+  <h1>Upload files</h1>
+  <p>Pick one or more files and they will be posted into the room you ran <code>/upload</code> in,
+     together as one post where the room's platform supports it. This page works once, and stops
+     working at <%= h(format_time(@expires_at)) %>.</p>
+  <form method="post" action="<%= h(request.script_name) %>/u/<%= h(@token) %>" enctype="multipart/form-data">
+    <p><input type="file" name="file[]" multiple required></p>
+    <p><button type="submit">Upload</button></p>
+  </form>
+  <p>A file over <%= h(@max_bytes / (1024 * 1024)) %> MB is refused, and so is a selection of more
+     than <%= h(@max_batch_files) %> files or over <%= h(@max_batch_bytes / (1024 * 1024)) %> MB
+     together. Whoever holds a download link can open the file, so treat every link as the file
+     itself.</p>
+</div>

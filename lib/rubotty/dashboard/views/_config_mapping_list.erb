@@ -1,0 +1,87 @@
+<%# A repeated-row editor for an array field whose `of:` names a nested %>
+<%# Config::Schema: one row of labelled inputs per entry instead of a %>
+<%# JSON-per-line textarea, added and removed client-side, still posting %>
+<%# indexed names into the same config_mapping_list_submission path. %>
+<% entries = Array(value) %>
+<% string_variant = mapping_string_variant?(field) %>
+<% presets = Rubotty::Dashboard::FeatureDisplay.field_presets(feature, field.name) %>
+<div class="cfg-mapping-list" data-next-index="<%= entries.length %>">
+  <div class="cfg-mapping-rows">
+    <% entries.each_with_index do |entry, index| %>
+      <%= erb :_config_mapping_row, layout: false,
+              locals: { field: field, schema: schema, entry: entry, index: index.to_s,
+                         string_variant: string_variant } %>
+    <% end %>
+  </div>
+  <div class="cfg-mapping-actions">
+    <button type="button" class="secondary cfg-mapping-add">Add entry</button>
+    <% if presets.any? %>
+      <select class="cfg-mapping-preset-select">
+        <% presets.each_with_index do |preset, preset_index| %>
+          <option value="<%= preset_index %>"
+                  data-preset-name="<%= h(preset["name"]) %>"
+                  data-preset-description="<%= h(preset["description"]) %>"
+                  data-preset-action="<%= h(preset["action"]) %>"><%= h(preset["name"]) %></option>
+        <% end %>
+      </select>
+      <button type="button" class="secondary cfg-mapping-preset-add">Add preset</button>
+    <% end %>
+  </div>
+  <template class="cfg-mapping-template">
+    <%= erb :_config_mapping_row, layout: false,
+            locals: { field: field, schema: schema, entry: {}, index: "__INDEX__",
+                       string_variant: string_variant } %>
+  </template>
+  <% hint = config_mapping_list_hint(field) %>
+  <% if hint %><p class="note"><%= h(hint) %></p><% end %>
+</div>
+
+<script>
+(function () {
+  if (window.__rbMappingListWired) return;
+  window.__rbMappingListWired = true;
+
+  function syncKind(select) {
+    var row = select.closest(".cfg-mapping-row");
+    if (!row) return;
+    var isWord = select.value === "word";
+    row.querySelectorAll(".cfg-mapping-rule-only").forEach(function (field) {
+      field.hidden = isWord;
+    });
+  }
+
+  document.addEventListener("change", function (event) {
+    if (event.target.classList.contains("cfg-mapping-kind")) syncKind(event.target);
+  });
+
+  document.addEventListener("click", function (event) {
+    var add = event.target.closest(".cfg-mapping-add");
+    var presetAdd = add ? null : event.target.closest(".cfg-mapping-preset-add");
+    if (add || presetAdd) {
+      var list = (add || presetAdd).closest(".cfg-mapping-list");
+      var index = list.getAttribute("data-next-index");
+      list.setAttribute("data-next-index", String(Number(index) + 1));
+      var row = list.querySelector(".cfg-mapping-template").content.cloneNode(true);
+      row.querySelectorAll("[name]").forEach(function (el) {
+        el.name = el.name.replace("__INDEX__", index);
+      });
+      if (presetAdd) {
+        var select = list.querySelector(".cfg-mapping-preset-select");
+        var option = select && select.options[select.selectedIndex];
+        if (option) {
+          ["name", "description", "action"].forEach(function (key) {
+            var input = row.querySelector("[name$='[" + key + "]']");
+            if (input) input.value = option.getAttribute("data-preset-" + key);
+          });
+        }
+      }
+      list.querySelector(".cfg-mapping-rows").appendChild(row);
+      return;
+    }
+    var remove = event.target.closest(".cfg-mapping-remove");
+    if (remove) remove.closest(".cfg-mapping-row")?.remove();
+  });
+
+  document.querySelectorAll(".cfg-mapping-kind").forEach(syncKind);
+})();
+</script>

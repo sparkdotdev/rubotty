@@ -1,0 +1,306 @@
+// Standard SVG charts shared by server hydration and client navigation.
+import { escapeHtml, Format } from "./primitives.civet"
+
+SERIES_LENGTH := 6
+
+// Past this many rows, or this long a label, a bar chart is drawn on its side:
+// a ranked list of room names does not fit under a vertical axis, and that is
+// a reading of the data rather than something the server should have to say.
+// Eight rather than twelve because the upright slot is 76.7 units wide and
+// twelve characters overlap their neighbours at every font size a theme sets.
+HORIZONTAL_ROWS := 6
+HORIZONTAL_LABEL := 8
+
+// Where a category label is cut, per orientation, counting the ellipsis. The
+// sideways figure's own gutter below is measured against this many characters
+// at the size Series A draws them.
+LABEL_LIMIT := { horizontal: 16, vertical: 12 }
+
+// How strongly the area under a time series is filled. The line is the
+// reading; the wash only says which side of it is under the curve.
+WASH_OPACITY := 0.4
+
+// A coordinate, at the precision an SVG path is worth writing down.
+function f(value: number): number
+  Math.round(value * 100) / 100
+
+// A label cut to fit, ellipsis included in the count. Format.truncate appends
+// its three dots after the cut, so the limit goes in three characters short.
+function cut(text: any, limit: number): string
+  Format.truncate text, Math.max(1, limit - 3)
+
+function sliceRole(index: number): string
+  `var(--rb-series-${(index % SERIES_LENGTH) + 1})`
+
+// The markup helpers. Everything a chart draws goes through one of these, so
+// no shape below writes a tag by hand.
+
+function svgPath(d: string, style: string): string
+  `<path d="${d}" style="${style}"/>`
+
+// Three classes carry the text a theme restyles: a category label, a value
+// printed on a mark, and an axis tick. Colour included, since nothing here
+// writes a fill on a text element.
+function svgText(x: number, y: number, text: any, cls: string, anchor: string = "middle"): string
+  `<text x="${f(x)}" y="${f(y)}" class="${cls}" text-anchor="${anchor}">${escapeHtml(text)}</text>`
+
+function strokeStyle(role: string, width: number): string
+  `stroke:${role};fill:none;stroke-width:${width};stroke-linecap:round;stroke-linejoin:round`
+
+function fillStyle(role: string): string
+  `fill:${role};stroke:none`
+
+function line(x1: number, y1: number, x2: number, y2: number): string
+  `M${f(x1)} ${f(y1)}L${f(x2)} ${f(y2)}`
+
+function path(points: any[]): string
+  return "" if points.length < 2
+
+  points.map((point: any, index: number) => `${index is 0 ? "M" : "L"}${f(point[0])} ${f(point[1])}`).join ""
+
+function rectPath(x: number, y: number, w: number, h: number): string
+  `M${f(x)} ${f(y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`
+
+// One step of the axis, rounded to something a reader can hold in their head.
+// Whole numbers only, since every count this draws is one.
+function niceStep(value: number): number
+  return 1 if value <= 1
+
+  power := Math.pow 10, Math.floor(Math.log10(value))
+  for step of [1, 2, 2.5, 5, 10]
+    candidate := power * step
+    return Math.ceil(candidate) if candidate >= value
+
+  Math.ceil(power * 10)
+
+// The axis top: four equal steps, so every guide below is labelled with the
+// number it actually sits at.
+function niceTop(max: number): number
+  4 * niceStep(max / 4)
+
+// An axis number, short enough to sit in a margin.
+function fmt(value: number): string
+  n := Number(value) or 0
+  return `${Math.round(n / 1_000_000 * 10) / 10}M` if Math.abs(n) >= 1_000_000
+  return `${Math.round(n / 1000 * 10) / 10}k` if Math.abs(n) >= 1000
+
+  String Math.round(n * 10) / 10
+
+// Both draw in a line role rather than a text one: at muted-text weight the
+// axis asserted as loudly as the numbers on it. The axis is the border mixed
+// a third of the way toward the ink, which is the two step line ramp the
+// mockups run and the swatch contract names one role for.
+AXIS_STYLE := "stroke:color-mix(in srgb, var(--rb-content-text) 30%, var(--rb-border));" +
+  "fill:none;stroke-width:1.25;stroke-linecap:round"
+GRID_STYLE := "stroke:var(--rb-border);fill:none;stroke-width:1;stroke-linecap:round"
+
+// The four horizontal guides and their values, shared by both upright shapes.
+// Zero is labelled at the baseline too, so the axis reads from the bottom.
+function horizontalGuides(left: number, top: number, width: number, height: number, ceiling: number): string
+  out .= svgText(left - 9, top + height + 3.5, fmt(0), "rb-chart-tick", "end")
+  for step of [1, 2, 3, 4]
+    y := top + height - (height * step / 4)
+    out += svgPath line(left - 4, y, left + width, y), GRID_STYLE
+    out += svgText(left - 9, y + 3.5, fmt(ceiling * step / 4), "rb-chart-tick", "end")
+
+  out
+
+// currentColor on the drawing is the floor under every string inside it: SVG
+// text otherwise defaults to black, and a class rule on the text element wins
+// over this inherited value the moment a theme writes one.
+function svgShell(viewBox: string, body: string): string
+  `<svg class="rb-chart-svg" viewBox="${viewBox}" preserveAspectRatio="xMidYMid meet" role="presentation" focusable="false" style="fill:currentColor">` +
+    `${body}</svg>`
+
+// Upright bars: the shape for a handful of categories, and for a series short
+// enough to read left to right.
+function verticalBars(rows: any[]): string
+  width := 520
+  height := 300
+  left := 46
+  right := 14
+  top := 18
+  bottom := 54
+  plotWidth := width - left - right
+  plotHeight := height - top - bottom
+  ceiling := niceTop Math.max(...rows.map((row: any) => row.count))
+  slot := plotWidth / rows.length
+  barWidth := Math.min 58, slot * 0.68
+
+  body .= horizontalGuides left, top, plotWidth, plotHeight, ceiling
+  body += svgPath line(left - 4, top + plotHeight, left + plotWidth + 4, top + plotHeight), AXIS_STYLE
+  body += svgPath line(left, top - 4, left, top + plotHeight + 4), AXIS_STYLE
+
+  rows.forEach (row: any, index: number) =>
+    role := "var(--rb-accent-primary)"
+    barHeight := plotHeight * (row.count / ceiling)
+    x := left + slot * index + (slot - barWidth) / 2
+    y := top + plotHeight - barHeight
+    body += svgPath rectPath(x, y, barWidth, barHeight), fillStyle(role)
+    outline := rectPath x, y, barWidth, barHeight
+    body += svgPath outline, strokeStyle(role, 1.6)
+
+    body += svgText x + barWidth / 2, y - 7, fmt(row.count), "rb-chart-value"
+    body += svgText x + barWidth / 2, top + plotHeight + 17,
+      cut(row.label, LABEL_LIMIT.vertical), "rb-chart-label"
+
+  svgShell `0 0 ${width} ${height}`, body
+
+// Bars on their side: the shape that copes with a ranked list and with labels
+// that are room names rather than hours. The gutter holds a label cut to
+// LABEL_LIMIT.horizontal at the size Series A draws it, which is what
+// keeps a real room name inside the drawing rather than off the left edge of
+// it; the same 29% of the width the mockups' own ranked lists give a label.
+function horizontalBars(rows: any[]): string
+  width := 520
+  rowHeight := 28
+  left := 150
+  right := 40
+  top := 12
+  bottom := 14
+  height := top + bottom + rowHeight * rows.length
+  plotWidth := width - left - right
+  ceiling := niceTop Math.max(...rows.map((row: any) => row.count))
+
+  body .= ""
+  for step of [1, 2, 3, 4]
+    x := left + plotWidth * step / 4
+    body += svgPath line(x, top - 2, x, top + rowHeight * rows.length + 2), GRID_STYLE
+
+  body += svgPath line(left, top - 4, left, top + rowHeight * rows.length + 4), AXIS_STYLE
+
+  rows.forEach (row: any, index: number) =>
+    role := "var(--rb-accent-primary)"
+    barHeight := rowHeight * 0.6
+    y := top + rowHeight * index + (rowHeight - barHeight) / 2
+    barWidth := plotWidth * (row.count / ceiling)
+    body += svgPath rectPath(left, y, barWidth, barHeight), fillStyle(role)
+    outline := rectPath left, y, barWidth, barHeight
+    body += svgPath outline, strokeStyle(role, 1.6)
+
+    body += svgText left - 9, y + barHeight / 2 + 4,
+      cut(row.label, LABEL_LIMIT.horizontal), "rb-chart-label", "end"
+    body += svgText left + barWidth + 7, y + barHeight / 2 + 4, fmt(row.count), "rb-chart-value", "start"
+
+  svgShell `0 0 ${width} ${height}`, body
+
+// Which way a bar chart falls. Both fallbacks below come through here too, so
+// a long label gets the sideways drawing whichever shape asked for bars.
+function bars(rows: any[]): string
+  longest := rows.reduce ((most: number, row: any) => Math.max(most, String(row.label ?? "").length)), 0
+  sideways := rows.length > HORIZONTAL_ROWS or longest > HORIZONTAL_LABEL
+  sideways ? horizontalBars(rows) : verticalBars(rows)
+
+// A time series: one line, a wash under it, and a label every few buckets so
+// twenty-four hours do not become twenty-four overlapping strings.
+function timeSeries(rows: any[]): string
+  return bars rows if rows.length < 3
+
+  width := 720
+  height := 300
+  left := 50
+  right := 18
+  top := 18
+  bottom := 46
+  plotWidth := width - left - right
+  plotHeight := height - top - bottom
+  ceiling := niceTop Math.max(...rows.map((row: any) => row.count))
+
+  body .= horizontalGuides left, top, plotWidth, plotHeight, ceiling
+
+  body += svgPath line(left - 4, top + plotHeight, left + plotWidth + 6, top + plotHeight), AXIS_STYLE
+  body += svgPath line(left, top - 6, left, top + plotHeight + 4), AXIS_STYLE
+
+  points := rows.map (row: any, index: number) =>
+    [left + plotWidth * index / (rows.length - 1), top + plotHeight - plotHeight * (row.count / ceiling)]
+
+  // The wash follows the line's exact points, at a fraction of its strength.
+  role := "var(--rb-accent-primary)"
+  area := `${path(points)}L${f(points[points.length - 1][0])} ${f(top + plotHeight)}` +
+    `L${f(points[0][0])} ${f(top + plotHeight)}Z`
+  body += `<g style="opacity:${WASH_OPACITY}">${svgPath(area, fillStyle(role))}</g>`
+
+  body += svgPath path(points), strokeStyle(role, 2)
+
+  // A label every nth bucket, chosen so the axis never carries more than about
+  // eight of them however long the window is.
+  every := Math.max 1, Math.ceil(rows.length / 8)
+  rows.forEach (row: any, index: number) =>
+    return unless index % every is 0
+
+    x := left + plotWidth * index / (rows.length - 1)
+    body += svgPath line(x, top + plotHeight, x, top + plotHeight + 4), AXIS_STYLE
+    body += svgText x, top + plotHeight + 18, cut(row.label, LABEL_LIMIT.vertical), "rb-chart-label"
+
+  svgShell `0 0 ${width} ${height}`, body
+
+// One ring segment as real arcs. A slice covering the whole circle is two
+// arcs out and two back, since a single arc cannot return to where it began.
+function ringSlice(cx: number, cy: number, outer: number, inner: number, from: number, to: number): string
+  sweep := to - from
+  at := (radius: number, angle: number) => `${f(cx + Math.cos(angle) * radius)} ${f(cy + Math.sin(angle) * radius)}`
+  if sweep >= Math.PI * 2 - 0.0001
+    return `M${at(outer, 0)}A${outer} ${outer} 0 1 1 ${at(outer, Math.PI)}` +
+      `A${outer} ${outer} 0 1 1 ${at(outer, 0)}Z` +
+      `M${at(inner, 0)}A${inner} ${inner} 0 1 0 ${at(inner, Math.PI)}` +
+      `A${inner} ${inner} 0 1 0 ${at(inner, 0)}Z`
+
+  large := sweep > Math.PI ? 1 : 0
+  `M${at(outer, from)}A${outer} ${outer} 0 ${large} 1 ${at(outer, to)}` +
+    `L${at(inner, to)}A${inner} ${inner} 0 ${large} 0 ${at(inner, from)}Z`
+
+// A share of a total: a ring, with the legend carrying the share as a
+// percentage so the figure never has to be measured by eye.
+function ring(rows: any[]): string
+  width := 520
+  height := 240
+  cx := 118
+  cy := 120
+  outer := 88
+  inner := 42
+  rowHeight := 26
+  total := rows.reduce ((sum: number, row: any) => sum + row.count), 0
+  return bars rows if total <= 0
+
+  // Every share but the last is rounded on its own, and the last takes
+  // whatever the rounding left over, so a legend of them reads 100%.
+  shares := rows.map (row: any) => Math.round(row.count / total * 100)
+  shares[shares.length - 1] = 100 - shares.slice(0, -1).reduce(((sum: number, share: number) => sum + share), 0)
+
+  body .= ""
+  from .= -Math.PI / 2
+  // Centred rather than hung off the top, so the last row lands inside the
+  // drawing however many slices there are.
+  legendTop := (height - rows.length * rowHeight) / 2 + 18
+
+  rows.forEach (row: any, index: number) =>
+    role := sliceRole index
+    to := from + Math.PI * 2 * (row.count / total)
+    outline := ringSlice cx, cy, outer, inner, from, to
+    body += svgPath outline, fillStyle(role)
+    body += svgPath outline, strokeStyle(role, 1.7)
+
+    // The legend pairs each slice colour with its label and percentage.
+    y := legendTop + index * rowHeight
+    body += svgPath rectPath(250, y - 9, 24, 10), fillStyle(role)
+    body += svgPath rectPath(250, y - 9, 24, 10), strokeStyle(role, 1.2)
+
+    body += svgText 284, y, cut(row.label, LABEL_LIMIT.horizontal), "rb-chart-label", "start"
+    body += svgText 508, y, `${shares[index]}%`, "rb-chart-value", "end"
+    from = to
+
+  svgShell `0 0 ${width} ${height}`, body
+
+// Which drawing a shape gets. This is the whole of the client's say over
+// visual form, and the reason the server never names one.
+function drawing(shape: string, rows: any[]): string
+  return timeSeries rows if shape is "time_series"
+  return ring rows if shape is "share_of_total"
+
+  bars rows
+
+// The data shape determines the visual form, without a selectable engine.
+function figure(rows: any[], shape: string): string
+  drawing shape, rows
+
+export { figure, SERIES_LENGTH }

@@ -1,0 +1,18 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+$LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
+
+# Load a .env file if one is present, for local runs only. Guarded, because a
+# deployed host supplies real environment variables and has no dotenv installed.
+# Values already set in the environment always win.
+begin
+  require "dotenv"
+  Dotenv.load(File.expand_path("../.env", __dir__))
+rescue LoadError
+  # dotenv is a development convenience. Its absence is normal in production.
+end
+
+require "rubotty"
+
+exit(Rubotty::CLI.run(ARGV))

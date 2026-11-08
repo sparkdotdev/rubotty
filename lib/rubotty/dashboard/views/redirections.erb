@@ -1,0 +1,14 @@
+<h1><%= h(@community.name) %>: redirections</h1>
+
+<div class="card muted">
+  Every run of messages an operator has moved out of one of this community's rooms and into another,
+  newest first. An operator starts a move in the room itself: reply to the first message with
+  <code>/redirect &lt;channel&gt;</code>, then reply to the last one with <code>/end</code>.
+  The run is reposted into the target room one message a second, and only once every one of them has
+  landed are the originals removed, also one a second. A move that is still reposting can be stopped
+  here; one that has started clearing the original cannot, because stopping it half way would leave the
+  run in both rooms at once.
+</div>
+
+<%= redirections_table(@redirections, community: @community,
+                       empty: "Nothing has been moved in this community yet.") %>

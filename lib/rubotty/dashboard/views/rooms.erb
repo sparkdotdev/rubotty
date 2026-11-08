@@ -1,0 +1,112 @@
+<h1><%= h(@community.name) %>: rooms</h1>
+
+<% unless @channel_management_enabled %>
+  <div class="card muted">
+    Channel management is off for this community. Turning it on lets an admin create and delete a
+    meta-channel from here, provisioned on each platform. Enable the <code>channel_management</code>
+    feature from the <a href="<%= request.script_name %>/communities/<%= h(@community.slug) %>/features">Features
+    page</a> to use this.
+  </div>
+<% end %>
+
+<% if @suggested && !@suggested.empty? %>
+  <div class="card">
+    <h2>Suggested topics</h2>
+    <p class="muted">
+      A non-operator ran <code>/identify-topic</code> in one of these, naming it as shown. The channel
+      row already exists, so it can be mapped into a room like any other discovered channel, but it
+      stays flagged here until an operator approves or rejects the suggested name.
+    </p>
+    <% @suggested.each do |channel| %>
+      <div class="row">
+        <div>
+          <strong><%= h(channel.label) %></strong>
+          <span class="muted"><%= h(channel.adapter) %> / <%= h(channel.route_key) %></span>
+        </div>
+        <div>
+          <form class="inline" method="post"
+                action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/suggested/<%= channel.id %>/approve">
+            <%= act_button("Approve", :manage_discovered, community: @community) %>
+          </form>
+        </div>
+        <div>
+          <form class="inline" method="post"
+                action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/suggested/<%= channel.id %>/reject">
+            <%= act_button("Reject", :manage_discovered, community: @community, style: "danger") %>
+          </form>
+        </div>
+      </div>
+    <% end %>
+  </div>
+<% end %>
+
+<% if @channel_management_enabled %>
+  <div class="card">
+    <h2>Create a room</h2>
+    <p class="muted">
+      Names a new meta-channel and creates the underlying channel on each platform chosen below, then
+      links them into one room. This is Discord-rich (a real channel, copyable permissions), best-effort
+      elsewhere: see the platform's own notes before relying on it. Provisioning happens on whichever bot
+      process is running for this community; check the audit log for the outcome.
+    </p>
+    <form method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/rooms">
+      <div class="row">
+        <div>
+          <label>Room / channel name</label>
+          <input type="text" name="name" required placeholder="Gaming &amp; Scheduling">
+        </div>
+        <div>
+          <label>Platforms</label>
+          <% @connections.each do |connection| %>
+            <label class="checkbox">
+              <input type="checkbox" name="platforms[]" value="<%= h(connection.adapter) %>/<%= h(connection.account) %>">
+              <%= h(connection.adapter) %> / <%= h(connection.account) %>
+            </label>
+          <% end %>
+        </div>
+        <div>
+          <label>Copy permissions from (optional endpoint key)</label>
+          <input type="text" name="template_channel" placeholder="dc-general">
+        </div>
+        <div><%= act_button("Create room", :manage_rooms, community: @community) %></div>
+      </div>
+    </form>
+  </div>
+<% end %>
+
+<% if @rooms.empty? %>
+  <div class="card muted">No rooms mapped yet.</div>
+<% else %>
+  <% @rooms.each do |room| %>
+    <div class="card">
+      <h2><%= h(room.label.to_s.empty? ? room.room_key : room.label) %> <span class="muted">(<%= h(room.room_key) %>)</span></h2>
+      <p>
+        <a class="button secondary"
+           href="<%= request.script_name %>/communities/<%= h(@community.slug) %>/features?scope=<%= h(room.room_key) %>">Configure features for this room</a>
+      </p>
+      <% if @channel_management_enabled %>
+        <form method="post"
+              action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/rooms/<%= room.id %>/delete">
+          <p class="note">
+            Unmaps this room by default. Deleting the real platform channels too is a separate opt-in below,
+            and only ever touches a channel this bot created &mdash; anything else needs its id confirmed by
+            hand with an administrator, which this form does not offer.
+          </p>
+          <div class="row">
+            <div>
+              <label>Type <code><%= h(room.room_key) %></code> to confirm</label>
+              <input type="text" name="confirm_name" required>
+            </div>
+            <div>
+              <label class="checkbox">
+                <input type="checkbox" name="delete_platform_channels" value="1">
+                Also delete the platform channels this bot created
+              </label>
+            </div>
+            <div><%= act_button("Delete room", :manage_rooms, community: @community) %></div>
+          </div>
+        </form>
+      <% end %>
+    </div>
+  <% end %>
+<% end %>

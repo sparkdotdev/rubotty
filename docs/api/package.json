@@ -1,0 +1,14 @@
+{
+  "name": "rubotty-api-spec",
+  "private": true,
+  "version": "1.0.0",
+  "license": "SEE LICENSE IN LICENSE.MD",
+  "description": "Tooling to lint openapi.yaml and render it to a single-file API.html for rubotty's REST admin API",
+  "scripts": {
+    "docs": "redocly build-docs openapi.yaml -o API.html --title \"rubotty admin API\"",
+    "lint": "redocly lint openapi.yaml"
+  },
+  "devDependencies": {
+    "@redocly/cli": "^2.41.0"
+  }
+}

@@ -1,0 +1,305 @@
+/* The floor every dashboard page stands on: the resets a theme assumes, and
+   the rules that draw a screen no theme has ported. Inlined by layout.erb, and
+   read by spec/support/css_cascade.rb so a cascade check resolves the same two
+   stylesheets a browser does.
+
+   It draws content and no chrome, so there is nothing here to flash: the body
+   it paints is staged out of sight until a theme reveals it, and what reaches
+   the screen unthemed is a screen no theme was ever going to draw.
+
+   Everything here sits in one cascade layer. A theme stylesheet is unlayered,
+   so wherever a theme declares a property it wins on that alone, whatever the
+   two selectors weigh. */
+@layer rubotty-fallback {
+  /* Type scale: xs meta text and badges, sm code/tables/secondary controls,
+     base labels and nav, md section headings, lg page headings and stat numbers.
+
+     Each neutral reads the swatch role it stands for, with its own colour as
+     the default. The swatch is linked on every page whether or not a theme
+     boots, so an unported screen sitting inside themed chrome takes its ground
+     and its ink from the same palette the chrome around it did, and a page
+     that got no swatch at all still has a full palette of its own. The tone
+     tints below are the exception: they are tints, and the swatch's danger,
+     success and warning are inks. */
+  :root { color-scheme: light;
+          --fs-xs: 0.8rem; --fs-sm: 0.85rem; --fs-base: 0.95rem; --fs-md: 1.15rem; --fs-lg: 1.5rem;
+          --fb-page: var(--rb-background, #f5f6f8); --fb-ink: var(--rb-content-text, #1a1a1a);
+          --fb-surface: var(--rb-surface, #fff);
+          --fb-surface-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+          --fb-head: var(--rb-fill-strong, #eef1f4); --fb-rule: var(--rb-border, #eceff2);
+          --fb-pre: var(--rb-fill, #f0f2f5);
+          --fb-panel: var(--rb-fill, #f7f9fb); --fb-panel-rule: var(--rb-border-strong, #d7dce2);
+          --fb-panel-ink: var(--rb-content-text, #1a1a1a);
+          --fb-control: var(--rb-surface, #fff); --fb-control-rule: var(--rb-border-strong, #c3cad3);
+          --fb-control-ink: var(--rb-content-text, #1a1a1a);
+          --fb-chip: var(--rb-fill-strong, #eef1f4); --fb-chip-ink: var(--rb-content-text, #2f3a45);
+          --fb-flat: var(--rb-fill-strong, #e3e7ec); --fb-flat-rule: var(--rb-border-strong, #c3cad3);
+          --fb-flat-ink: var(--rb-muted-text, #6b7684);
+          --fb-tab: var(--rb-surface, #fff); --fb-tab-rule: var(--rb-border-strong, #c3cad3);
+          --fb-tab-ink: var(--rb-content-text, #3b5168);
+          --fb-muted: var(--rb-muted-text, #6b7684); --fb-heading: var(--rb-header-text, #10202f);
+          --fb-link: var(--rb-accent-primary, #2b6cb0);
+          --fb-chart-ink: inherit; --fb-chart-axis: #000;
+          --fb-success: #d4f4dd; --fb-success-ink: #12662f;
+          --fb-warning: #fdeecb; --fb-warning-ink: #8a5a12;
+          --fb-danger: #ffe0e0; --fb-danger-ink: #8a1c1c; }
+
+  /* Light is the base, dark applies under the OS preference, and an explicit
+     data-theme on the root outranks both on specificity alone. The same three
+     way cascade assets/themes/_swatch.scss writes, so the page and the swatch
+     agree about which mode they are in however the reader chose it. */
+  @media (prefers-color-scheme: dark) {
+    :root { color-scheme: dark;
+            --fb-page: var(--rb-background, #12171d); --fb-ink: var(--rb-content-text, #e4e8ec);
+            --fb-surface: var(--rb-surface, #1c232b);
+            --fb-surface-shadow: none;
+            --fb-head: var(--rb-fill-strong, #252e38); --fb-rule: var(--rb-border, #2b333d);
+            --fb-pre: var(--rb-fill, #252e38);
+            --fb-panel: var(--rb-fill, #252e38); --fb-panel-rule: var(--rb-border-strong, #3a434e);
+            --fb-panel-ink: var(--rb-content-text, #e4e8ec);
+            --fb-control: var(--rb-surface, #1c232b); --fb-control-rule: var(--rb-border-strong, #3a434e);
+            --fb-control-ink: var(--rb-content-text, #e4e8ec);
+            --fb-chip: var(--rb-fill-strong, #252e38); --fb-chip-ink: var(--rb-content-text, #cdd7e0);
+            --fb-flat: var(--rb-fill-strong, #252e38); --fb-flat-rule: var(--rb-border-strong, #3a434e);
+            --fb-flat-ink: var(--rb-muted-text, #8b97a5);
+            --fb-tab: var(--rb-surface, #1c232b); --fb-tab-rule: var(--rb-border-strong, #3a434e);
+            --fb-tab-ink: var(--rb-content-text, #9fb2c6);
+            --fb-muted: var(--rb-muted-text, #9fb2c6); --fb-heading: var(--rb-header-text, #f0f3f7);
+            --fb-link: var(--rb-accent-primary, #6fa8dc);
+            --fb-chart-ink: #fff; --fb-chart-axis: #9fb2c6;
+            --fb-success: #1e3a2a; --fb-success-ink: #6fd39a;
+            --fb-warning: #3a2f14; --fb-warning-ink: #f0c05a;
+            --fb-danger: #3a1f1f; --fb-danger-ink: #ff8a80; }
+  }
+
+  :root[data-theme="dark"] { color-scheme: dark;
+          --fb-page: var(--rb-background, #12171d); --fb-ink: var(--rb-content-text, #e4e8ec);
+          --fb-surface: var(--rb-surface, #1c232b);
+          --fb-surface-shadow: none;
+          --fb-head: var(--rb-fill-strong, #252e38); --fb-rule: var(--rb-border, #2b333d);
+          --fb-pre: var(--rb-fill, #252e38);
+          --fb-panel: var(--rb-fill, #252e38); --fb-panel-rule: var(--rb-border-strong, #3a434e);
+          --fb-panel-ink: var(--rb-content-text, #e4e8ec);
+          --fb-control: var(--rb-surface, #1c232b); --fb-control-rule: var(--rb-border-strong, #3a434e);
+          --fb-control-ink: var(--rb-content-text, #e4e8ec);
+          --fb-chip: var(--rb-fill-strong, #252e38); --fb-chip-ink: var(--rb-content-text, #cdd7e0);
+          --fb-flat: var(--rb-fill-strong, #252e38); --fb-flat-rule: var(--rb-border-strong, #3a434e);
+          --fb-flat-ink: var(--rb-muted-text, #8b97a5);
+          --fb-tab: var(--rb-surface, #1c232b); --fb-tab-rule: var(--rb-border-strong, #3a434e);
+          --fb-tab-ink: var(--rb-content-text, #9fb2c6);
+          --fb-muted: var(--rb-muted-text, #9fb2c6); --fb-heading: var(--rb-header-text, #f0f3f7);
+          --fb-link: var(--rb-accent-primary, #6fa8dc);
+          --fb-chart-ink: #fff; --fb-chart-axis: #9fb2c6;
+          --fb-success: #1e3a2a; --fb-success-ink: #6fd39a;
+          --fb-warning: #3a2f14; --fb-warning-ink: #f0c05a;
+          --fb-danger: #3a1f1f; --fb-danger-ink: #ff8a80; }
+
+  :root[data-theme="light"] { color-scheme: light;
+          --fb-page: var(--rb-background, #f5f6f8); --fb-ink: var(--rb-content-text, #1a1a1a);
+          --fb-surface: var(--rb-surface, #fff);
+          --fb-surface-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+          --fb-head: var(--rb-fill-strong, #eef1f4); --fb-rule: var(--rb-border, #eceff2);
+          --fb-pre: var(--rb-fill, #f0f2f5);
+          --fb-panel: var(--rb-fill, #f7f9fb); --fb-panel-rule: var(--rb-border-strong, #d7dce2);
+          --fb-panel-ink: var(--rb-content-text, #1a1a1a);
+          --fb-control: var(--rb-surface, #fff); --fb-control-rule: var(--rb-border-strong, #c3cad3);
+          --fb-control-ink: var(--rb-content-text, #1a1a1a);
+          --fb-chip: var(--rb-fill-strong, #eef1f4); --fb-chip-ink: var(--rb-content-text, #2f3a45);
+          --fb-flat: var(--rb-fill-strong, #e3e7ec); --fb-flat-rule: var(--rb-border-strong, #c3cad3);
+          --fb-flat-ink: var(--rb-muted-text, #6b7684);
+          --fb-tab: var(--rb-surface, #fff); --fb-tab-rule: var(--rb-border-strong, #c3cad3);
+          --fb-tab-ink: var(--rb-content-text, #3b5168);
+          --fb-muted: var(--rb-muted-text, #6b7684); --fb-heading: var(--rb-header-text, #10202f);
+          --fb-link: var(--rb-accent-primary, #2b6cb0);
+          --fb-chart-ink: inherit; --fb-chart-axis: #000;
+          --fb-success: #d4f4dd; --fb-success-ink: #12662f;
+          --fb-warning: #fdeecb; --fb-warning-ink: #8a5a12;
+          --fb-danger: #ffe0e0; --fb-danger-ink: #8a1c1c; }
+
+  /* The two resets every theme is written against and none of them restates.
+     A theme that mounts covers the page ground with its own shell, so what
+     these draw on a themed page is the gutter around it. */
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         line-height: 1.5; color: var(--fb-ink); background: var(--fb-page); }
+  /* The page as it stands when no theme took it over. The staging node is
+     revealed exactly as the server sent it, so the reading column the shell
+     would have given it is drawn here instead. */
+  #rb-staging { min-height: 100vh; display: flex; flex-direction: column; }
+  #rb-staging > #rb-content { width: 100%; max-width: 960px; margin: 0 auto;
+                              padding: 1.4rem 1.2rem 3rem; flex: 1 0 auto; }
+  /* The scripting reference is a wide table, and 960px wraps it mid token. */
+  #rb-staging > #rb-content.wide { max-width: 1400px; }
+  #rb-staging > footer.bottom { padding: 1rem 1.2rem 2rem; border-top: 1px solid var(--fb-rule);
+                                font-size: var(--fs-xs); color: var(--fb-muted); }
+  /* Every rule from here down draws an unported screen, and :not([class*="rb-"])
+     is what keeps it off an element the primitive layer drew. A layer alone
+     cannot do it: a theme that never mentions a property has nothing here to
+     outrank, so the fallback would draw it by default. */
+  h1:not([class*="rb-"]) { font-size: var(--fs-lg); margin: 0.2rem 0 1rem; }
+  h2:not([class*="rb-"]) { font-size: var(--fs-md); margin: 1.6rem 0 0.6rem; }
+  /* A plain content link, off the swatch rather than the browser's own blue. */
+  a:not([class*="rb-"]) { color: var(--fb-link); }
+  /* Every ground below carries its own ink. An unported screen is drawn inside
+     whatever chrome is around it, and one that took a ground from this file
+     and its ink from a theme is how a page ends up unreadable.
+
+     A cell takes its size from a rule on itself rather than from the table it
+     sits in, so a cascade layer cannot hand a themed table's own font-size
+     down here. Scoped to a table the primitive layer did not draw instead. */
+  table:not([class*="rb-"]) { border-collapse: collapse; width: 100%; background: var(--fb-surface);
+          color: var(--fb-ink);
+          border-radius: 6px; overflow: hidden; box-shadow: var(--fb-surface-shadow); }
+  table:not([class*="rb-"]) th, table:not([class*="rb-"]) td {
+           text-align: left; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--fb-rule);
+           vertical-align: top; font-size: var(--fs-sm); }
+  table:not([class*="rb-"]) th { background: var(--fb-head); font-weight: 600; }
+  table:not([class*="rb-"]) tr:last-child td { border-bottom: 0; }
+  code:not([class*="rb-"]), pre:not([class*="rb-"]) {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-sm); }
+  pre:not([class*="rb-"]) { background: var(--fb-pre); color: var(--fb-ink);
+        padding: 0.5rem 0.7rem; border-radius: 5px;
+        overflow-x: auto; margin: 0; }
+  .card { background: var(--fb-surface); color: var(--fb-ink);
+          border-radius: 6px; padding: 1rem 1.1rem; margin-bottom: 1rem;
+          box-shadow: var(--fb-surface-shadow); }
+  .pill { display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px; font-size: var(--fs-xs);
+          font-weight: 600; }
+  .pill.active { background: var(--fb-success); color: var(--fb-success-ink); }
+  .pill.suspended { background: var(--fb-danger); color: var(--fb-danger-ink); }
+  .pill.off { background: var(--fb-flat); color: var(--fb-flat-ink); }
+  .pill.protected { background: var(--fb-warning); color: var(--fb-warning-ink); }
+  .pill.discovered { background: var(--rb-accent-tint, #e6ddfb); color: var(--rb-accent-primary, #4a2f8a); }
+  .pill.alert { background: var(--fb-danger); color: var(--fb-danger-ink); }
+  .muted { color: var(--fb-muted); }
+  /* human-readable config summary */
+  .cfg-row { font-size: var(--fs-sm); margin: 0 0 0.3rem; }
+  .cfg-row:last-child { margin-bottom: 0; }
+  .chip { display: inline-block; background: var(--fb-chip); color: var(--fb-chip-ink); border-radius: 999px;
+          padding: 0.05rem 0.5rem; margin: 0 0.2rem 0.2rem 0; font-size: var(--fs-xs); }
+  /* Feature matrix: a feature's config summary runs the full width of its own
+     row's collapsed body, instead of a narrow side column. A side column that
+     has to fit both a one-line toggle and a list-valued key like events'
+     reminder ladder breaks down the moment that list gets past a couple
+     entries, since the column is barely wider than one chip. */
+  .cfg-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 1.2rem;
+                 padding: 0.5rem 0.7rem; background: var(--fb-panel); color: var(--fb-panel-ink);
+                 border-radius: 5px; }
+  .cfg-summary .cfg-row { margin: 0; }
+  /* A list-valued config key, like events' reminder ladder, wraps its badges
+     across as many lines as it needs, left to right, rather than one badge per
+     line the way a plain inline-block run does in a narrow container. */
+  .chip-list { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; vertical-align: top; }
+  .chip-list .chip { margin: 0; }
+  form.inline { display: inline; margin: 0; }
+  /* One rule for every mode, so the dark values cannot be outweighed by the
+     light ones the way a separate dark block's shorter selector was. */
+  input[type=text]:not([class*="rb-"]), input[type=password]:not([class*="rb-"]),
+  textarea:not([class*="rb-"]), select:not([class*="rb-"]) {
+    font: inherit; padding: 0.4rem 0.55rem; border: 1px solid var(--fb-control-rule); border-radius: 5px;
+    background: var(--fb-control); color: var(--fb-control-ink); max-width: 100%; }
+  textarea:not([class*="rb-"]) { width: 100%; min-height: 8rem; font-family: ui-monospace, monospace;
+    font-size: var(--fs-sm); }
+  /* Buttons carry the historic ruby red, and a styled
+     <a class="button"> matches it for a link that has to stay a GET.
+     .secondary is plain, a neutral control rather than a second flavour of
+     primary: white (or the swatch's own surface) with a line-strong border
+     and ordinary ink text, no accent anywhere on it. .danger is the one
+     treatment that gets the accent-adjacent tone, and it earns it by shape as
+     well as by colour: transparent fill, a danger border and danger text,
+     so it never reads as a plain secondary wearing a different hue. */
+  button:not([class*="rb-"]), a.button {
+           font: inherit; padding: 0.4rem 0.8rem; border: 1px solid #cc342d; background: #cc342d;
+           color: #fff; border-radius: 5px; cursor: pointer; text-decoration: none; display: inline-block; }
+  button.secondary, a.button.secondary {
+    background: var(--fb-surface); border-color: var(--rb-border-strong, #c3cad3); color: var(--fb-ink); }
+  button.danger, a.button.danger {
+    background: transparent; border-color: var(--rb-danger, #8a1c1c); color: var(--rb-danger, #8a1c1c); }
+  /* A control the reader may not press. The button stays where it is and goes
+     flat, so a viewer can see what an operator here would be able to change
+     instead of wondering whether the setting exists at all. Last of the three
+     so it wins over .secondary and .danger. */
+  button:not([class*="rb-"]):disabled, button.disabled, a.button.disabled {
+    background: var(--fb-flat); border-color: var(--fb-flat-rule); color: var(--fb-flat-ink);
+    cursor: not-allowed; }
+  .flash { padding: 0.7rem 1rem; border-radius: 6px; margin-bottom: 1rem; }
+  .flash.notice { background: var(--fb-success); color: var(--fb-success-ink); }
+  .flash.error { background: var(--fb-danger); color: var(--fb-danger-ink); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.8rem; }
+  .grid .stat { background: var(--fb-surface); color: var(--fb-ink);
+                border-radius: 6px; padding: 0.8rem; text-align: center;
+                box-shadow: var(--fb-surface-shadow); }
+  .grid .stat .n { font-size: var(--fs-lg); font-weight: 700; }
+  .grid .stat .l { font-size: var(--fs-xs); color: var(--fb-muted); }
+  fieldset { border: 1px solid var(--fb-panel-rule); border-radius: 6px; margin: 0 0 1rem; padding: 0.8rem 1rem; }
+  legend { font-weight: 600; padding: 0 0.4rem; }
+  label:not([class*="rb-"]) { font-size: var(--fs-base); }
+  .checkbox { display: flex; align-items: center; gap: 0.4rem; }
+  .row { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: 0.6rem; }
+  .row > div { display: flex; flex-direction: column; gap: 0.2rem; }
+  .row > .button-group { flex-direction: row; align-items: center; }
+  /* Any rule written here beats the browser's own display: none for [hidden],
+     so .row > div above silently un-hid every box the script editor tried to
+     hide. */
+  [hidden] { display: none !important; }
+  /* generic per-feature config form */
+  .cfg-field { margin-bottom: 0.9rem; }
+  .cfg-field label { display: block; font-weight: 600; margin-bottom: 0.2rem; }
+  .cfg-field .note { margin: 0 0 0.3rem; }
+  .cfg-field textarea { min-height: 4rem; }
+  /* One entry of a mapping-list field (content_policy's and word_filter's
+     "entries"): a bordered strip per row so a long list of labelled inputs
+     still reads as a list of separate things rather than one long form. */
+  .cfg-mapping-row { border: 1px solid var(--fb-panel-rule); border-radius: 6px;
+    padding: 0.7rem 0.7rem 0; margin-bottom: 0.6rem; }
+  .cfg-mapping-row .cfg-field { min-width: 9rem; flex: 1 1 9rem; }
+  .cfg-mapping-remove-field { flex: 0 0 auto; min-width: 0; }
+  .cfg-mapping-list template { display: none; }
+  /* Add entry and, where the field has any, its preset picker (a select of
+     named presets plus one Add preset button), in one wrapping row rather
+     than each on its own line. */
+  .cfg-mapping-actions { display: flex; gap: 0.8rem; flex-wrap: wrap; align-items: center; }
+  /* A select takes its width from its longest option, and a preset's name is
+     a whole sentence, so without a cap it alone is wider than the row. This
+     view is on the burn-down list, so the pairing wrapper the themed side
+     draws is deliberately not added here; the cap is the whole fix. */
+  .cfg-mapping-preset-select { max-width: 16rem; }
+  /* A feature's config editor, opened in place inside its own row's body
+     rather than a separate page: form and submit only draw once that row is
+     expanded, which is rb-section--collapsible's own job. */
+  .cfg-editor-submit { margin-top: 0.6rem; }
+  /* analytics */
+  .window-tabs { display: flex; gap: 0.4rem; margin: 0 0 1rem; }
+  .window-tabs a { text-decoration: none; font-size: var(--fs-sm); padding: 0.25rem 0.7rem;
+                   border: 1px solid var(--fb-tab-rule); border-radius: 999px; color: var(--fb-tab-ink);
+                   background: var(--fb-tab); }
+  .window-tabs a.active { background: var(--rb-accent-primary, #2b6cb0); border-color: var(--rb-accent-primary, #2b6cb0);
+                           color: var(--rb-on-accent, #fff); font-weight: 600; }
+  /* An example, and the plain text it falls back to without the editor bundle.
+     Indented so it reads as one worked thing. */
+  .worked-example { border-left: 3px solid var(--fb-panel-rule); padding-left: 0.8rem; margin: 0.6rem 0 0.2rem; }
+  .worked-example .note { margin: 0.5rem 0 0.25rem; }
+  .code-example { margin: 0 0 0.2rem; }
+  pre[data-code] { background: var(--fb-panel); border: 1px solid var(--fb-panel-rule); border-radius: 6px;
+                   color: var(--fb-panel-ink);
+                   padding: 0.5rem 0.6rem; font-size: var(--fs-xs); overflow-x: auto; margin: 0 0 0.2rem; }
+  /* Both wrap rather than scrolling sideways, since either would push the page
+     off a phone screen. The spanned "what it does" cell aligns to the top of
+     the first call shape. */
+  .host-functions td { font-size: var(--fs-sm); vertical-align: top; }
+  .host-functions td code { font-size: var(--fs-xs); overflow-wrap: anywhere; }
+  .host-functions td:first-child { width: 22%; }
+  /* The example column holds code, so it scrolls in its own cell rather than
+     breaking a call mid string. */
+  .host-functions td:last-child { max-width: 22rem; }
+  .host-functions td:last-child code { white-space: pre; overflow-wrap: normal;
+                                       display: block; overflow-x: auto; }
+  .host-functions ul.arguments { margin: 0; padding-left: 1rem; }
+  .host-functions ul.arguments li { margin: 0 0 0.15rem; }
+  /* On a phone the page and card padding together took about a fifth of the
+     width, which the charts felt most. Trimmed rather than removed. */
+  @media (max-width: 560px) {
+    .card { padding: 0.9rem 0.7rem; }
+  }
+  .note { font-size: var(--fs-xs); color: var(--fb-muted); margin: 0.3rem 0 0; }
+}

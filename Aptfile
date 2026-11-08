@@ -1,0 +1,44 @@
+# System packages for a Heroku buildpack build (issue #347). Read by the
+# heroku-community/apt buildpack, which has to be FIRST in the buildpack list:
+# it downloads these into /app/.apt and exports PATH and LD_LIBRARY_PATH both
+# to the buildpacks that run after it and to the dyno itself.
+#
+# Nothing here is read by the Coolify build. That one is railpack.json, which
+# installs the Debian bookworm packages with apt-get.
+#
+# lua5.4 is the RUNTIME. The scripting sandbox spawns it as a child process on
+# every message and lib/rubotty/scripting/child.rb finds it by walking PATH for
+# the name. No Heroku stack preinstalls Lua, so without this line the whole
+# scripting feature reports itself uninstalled.
+#
+# MessagePack is the one rock the sandbox requires, and there is no line for
+# it here: noble's luarocks still links against Lua 5.1 and cannot install
+# into a 5.4 tree, and unlike dkjson before it, Ubuntu packages no
+# lua-messagepack either. vendor/lua/MessagePack.lua is the fix, a pure Lua
+# file checked into this repository rather than fetched by anything at build
+# time; .profile points LUA_PATH at it.
+#
+# The other three dialect transpilers (fennel, moonc, tl) are deliberately
+# absent. Nothing packages them for Ubuntu and luarocks cannot reach Lua 5.4
+# here, so a Heroku deploy offers plain Lua and reports MoonScript, Fennel and
+# Teal unavailable. That is an ordinary state the dashboard already handles: a
+# dialect with no compiler is simply not offered. The Coolify build has all
+# four.
+#
+# lua5.4 lives in Ubuntu's universe component. If a build fails with "Unable to
+# locate package lua5.4", the stack image's sources do not carry universe, and
+# the fix is a line like the one below, which this buildpack APPENDS to the
+# stack's own sources rather than replacing them. Match the mirror to the dyno
+# architecture: archive.ubuntu.com serves amd64, ports.ubuntu.com serves arm64.
+#
+#   :repo:deb http://archive.ubuntu.com/ubuntu noble main universe
+#
+# imagemagick supplies the `convert` binary Util::ImageShrinker spawns to bring
+# an oversized picture under a platform's upload limit (issue #642), and ffmpeg
+# supplies the ffmpeg and ffprobe pair Util::VideoTranscoder will use for the
+# same job on a video. Both are found by walking PATH for the name, so a stack
+# without them simply reports the shrink strategies unavailable at boot and
+# file_rehosting links the file instead.
+lua5.4
+imagemagick
+ffmpeg

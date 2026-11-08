@@ -1,0 +1,13 @@
+# Reference contract only. Preserve the existing applications, private mounts,
+# runtime environment, networks and persistent storage when applying it.
+services:
+  rubotty:
+    image: ${RUBOTTY_IMAGE:?Set the verified ghcr.io repository@sha256 digest}
+    pull_policy: always
+    restart: unless-stopped
+    command: [bundle, exec, bin/rubotty, run]
+  rubotty-web:
+    image: ${RUBOTTY_IMAGE:?Set the verified ghcr.io repository@sha256 digest}
+    pull_policy: always
+    restart: unless-stopped
+    command: [bundle, exec, bin/rubotty, web]

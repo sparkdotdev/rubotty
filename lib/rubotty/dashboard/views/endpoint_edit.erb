@@ -1,0 +1,108 @@
+<h1><%= h(@community.name) %>: <%= @endpoint ? h(@endpoint.name) : "new script endpoint" %></h1>
+
+<form method="post" action="<%= url("/communities/#{@community.slug}/endpoints") %>">
+  <% if @endpoint %><input type="hidden" name="id" value="<%= @endpoint.id %>"><% end %>
+
+  <div class="card">
+    <h2>What a script calls it</h2>
+    <p class="muted">
+      The name is the only part a script ever sees. Lowercase letters, numbers, dashes and underscores.
+    </p>
+    <div class="row">
+      <div>
+        <label>Name</label>
+        <input name="name" placeholder="weather" value="<%= h(@endpoint&.name) %>">
+      </div>
+      <div>
+        <label>Method</label>
+        <select name="http_method">
+          <% Rubotty::ControlPlane::ScriptEndpoints::METHODS.each do |verb| %>
+            <option value="<%= verb %>" <%= @endpoint&.http_method == verb ? "selected" : "" %>><%= verb %></option>
+          <% end %>
+        </select>
+      </div>
+    </div>
+    <div>
+      <label>What it is for</label>
+      <input name="description" placeholder="Today's forecast for a town"
+             value="<%= h(@endpoint&.description) %>">
+      <p class="note">Shown in the list, so somebody else knows what this is without opening it.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Target</h2>
+    <%= notice("Put {braces} around any part a script fills in, and it is encoded on the way. The host " \
+               "stays under this community's control, so a rule can pick the town but never the site.",
+               tone: :info) %>
+    <%= help_disclosure(
+          ["A script names this endpoint and rubotty asks the address written here. The only thing a " \
+           "script decides is what goes into a brace you wrote, so it can pick the town and never the site.",
+           "The scripting reference works one endpoint through end to end: the URL, the query parameters, " \
+           "the Lua that calls it, what a POST body looks like and how the answer comes back."],
+          action: :view_endpoints, community: @community,
+          reference: ["Read the scripting reference", url("/documentation")],
+          title: "How a script calls this"
+        ) %>
+    <div>
+      <label>URL</label>
+      <input name="url" placeholder="https://api.example.com/forecast?town={town}"
+             value="<%= h(@endpoint&.url) %>">
+    </div>
+    <div>
+      <label>Query parameters, one per line</label>
+      <textarea name="query_params" rows="3"
+                placeholder="town: {town}&#10;units: metric"><%= h(@endpoint ? Rubotty::ControlPlane::ScriptEndpoints.pairs_to_lines(@endpoint.query_params) : "") %></textarea>
+      <p class="note">
+        Written as <code>name: value</code>, and added to the address above. A value can be fixed
+        (<code>units: metric</code>) or filled by the script (<code>town: {town}</code>). Putting them
+        here rather than in the URL means you can see them, and a script still cannot add its own: the
+        only thing a script decides is what goes INTO a brace you wrote.
+      </p>
+    </div>
+
+    <div>
+      <label>Headers, one per line</label>
+      <%# The one field on this page that holds a credential value, so it is the
+          one field a reader who is not an administrator gets [redacted] for. %>
+      <textarea name="headers" rows="4"
+                placeholder="Authorization: Bearer abc123"><%= h(@endpoint ? redact_secret(Rubotty::ControlPlane::ScriptEndpoints.headers_to_lines(@endpoint.headers)) : "") %></textarea>
+      <p class="note">
+        Written as <code>Name: value</code>. This is where an API key goes. A script never sees these.
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Limits</h2>
+    <p class="muted">
+      These protect the room rather than the far end. Every call a script makes is fire and forget
+      through <code>rubotty.async_http</code>, which replies first and posts the answer when it
+      arrives, so the timeout is how long the bot waits before giving up on the far end.
+    </p>
+    <div class="row">
+      <div>
+        <label>Timeout, in seconds</label>
+        <input name="timeout_seconds" type="number" min="1"
+               max="<%= Rubotty::ControlPlane::ScriptEndpoints::MAX_TIMEOUT %>"
+               value="<%= @endpoint&.timeout_seconds || 2 %>">
+      </div>
+    </div>
+    <div>
+      <label>
+        <input type="checkbox" name="enabled" value="1" <%= @endpoint.nil? || @endpoint.enabled ? "checked" : "" %>>
+        Available to scripts
+      </label>
+      <p class="note">Turn this off to stop every script calling it, without deleting what you set up.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <%= form_footer(
+          validation: "Name and URL are required, and a name is lowercase letters, numbers, dashes and underscores.",
+          actions: button("Back to endpoints", action: :view_endpoints, community: @community,
+                          variant: :secondary, to: url("/communities/#{@community.slug}/endpoints")),
+          submit: button("Save", action: :manage_endpoints, community: @community)
+        ) %>
+  </div>
+</form>

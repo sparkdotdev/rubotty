@@ -1,0 +1,36 @@
+# The Fir generation builds with Cloud Native Buildpacks, which read none of
+# app.json, Aptfile or .profile. This is the same three decisions written in
+# the format that generation does read.
+#
+# NOT VERIFIED against a real Fir app. Cedar plus app.json plus Aptfile is the
+# path that was worked through end to end; this file is here so a Fir build has
+# something to read rather than silently producing an image with no Lua in it.
+# Treat it as a starting point and expect to correct it.
+#
+# The known gap: nothing here sets LUA_PATH. On Cedar that is .profile's job,
+# and CNB launch does not source .profile, so on Fir the same two variables
+# have to be config vars on the app. The values are in .profile.
+#
+# Order matches app.json's, for the same reason: the last buildpack owns the
+# image. heroku/procfile has to be last of all, or the Procfile is never read
+# and the app has no process types at all.
+
+[_]
+schema-version = "0.2"
+
+# The CNB equivalent of Aptfile. Same packages, same reasons, which are written
+# out in Aptfile rather than repeated here.
+[com.heroku.buildpacks.deb-packages]
+install = ["lua5.4", "imagemagick", "ffmpeg"]
+
+[[io.buildpacks.group]]
+id = "heroku/deb-packages"
+
+[[io.buildpacks.group]]
+id = "heroku/nodejs"
+
+[[io.buildpacks.group]]
+id = "heroku/ruby"
+
+[[io.buildpacks.group]]
+id = "heroku/procfile"

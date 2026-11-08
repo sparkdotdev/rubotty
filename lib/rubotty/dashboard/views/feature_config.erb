@@ -1,0 +1,48 @@
+<h1><%= h(@community.name) %>: <%= h(@feature) %> config</h1>
+
+<div class="card">
+  <p class="muted">
+    Every field this feature's config_schema declares, for one scope at a time. A blank field is left
+    alone on save, so nothing is cleared by accident; emptying a list that had entries is the one
+    exception, and stores the empty list that turns that setting off. The value shown is what this
+    scope actually runs at right now, its own override where one is set, otherwise the feature's own default.
+  </p>
+</div>
+
+<div class="card">
+  <form method="get" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/features/<%= h(@feature) %>/config">
+    <div class="row">
+      <div>
+        <label>Scope</label>
+        <select name="scope">
+          <% @scopes.each do |scope| %>
+            <option value="<%= h(scope[:value]) %>" <%= scope[:value] == @scope ? "selected" : "" %>><%= h(scope[:label]) %></option>
+          <% end %>
+        </select>
+      </div>
+      <div><button type="submit">View</button></div>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Scope <code><%= h(@scope) %></code></h2>
+  <% retention = Rubotty::Features::Catalog.retention_notice(@feature) %>
+  <% if retention %>
+    <p class="note"><strong>What this keeps:</strong> <%= h(retention) %></p>
+  <% end %>
+  <p class="note">
+    This page only edits config; turning <%= h(@feature) %> on or off for this scope is the
+    <a href="<%= request.script_name %>/communities/<%= h(@community.slug) %>/features?scope=<%= h(@scope) %>">Features page</a>'s job, with the same scope already selected.
+  </p>
+  <form method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/features/<%= h(@feature) %>/config">
+    <input type="hidden" name="selector" value="<%= h(@scope) %>">
+    <%= erb :_config_fields, layout: false,
+            locals: { fields: @schema.fields.each_value.to_a, config: @config, feature: @feature } %>
+    <%= form_footer(
+          validation: "A blank field is left alone on save. Emptying a list that had entries stores " \
+                      "an empty list, which turns that setting off.",
+          submit: button("Save", action: :"configure_#{@feature}", community: @community)
+        ) %>
+  </form>
+</div>

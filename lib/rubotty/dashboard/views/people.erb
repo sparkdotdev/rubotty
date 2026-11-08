@@ -1,0 +1,106 @@
+<h1><%= h(@community.name) %>: people</h1>
+
+<div class="card muted">
+  Everyone the identity directory has seen talking here, one row per platform account. A nickname is what
+  that person is shown as when their messages reach a DIFFERENT platform, so a row carries one field per
+  other platform this community bridges, the same as <code>/nickname &lt;platform&gt; &lt;name&gt;</code>
+  asks for in chat. Save it in place; the write goes through the exact same store the command writes to, so
+  a name set here shows up exactly as it would if they had typed it themselves. Leave a field blank and save
+  to clear it.
+</div>
+
+<div class="card">
+  <h2>Who may set a nickname</h2>
+  <p class="muted">
+    Community-wide, and it covers both surfaces: <code>operators</code> (the default) lets an operator set a
+    name here and in chat, <code>everyone</code> additionally lets a member set their own with
+    <code>/nickname</code>, and <code>nobody</code> hands none out anywhere, including the fields below.
+  </p>
+  <form method="post"
+        action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/features/nickname/config">
+    <input type="hidden" name="selector" value="all">
+    <input type="hidden" name="return_to" value="<%= h(leftover_return_token) %>">
+    <div class="row">
+      <div>
+        <select name="who_can_set">
+          <% @who_can_set_field.one_of.each do |option| %>
+            <option value="<%= h(option) %>" <%= @who_can_set.to_s == option.to_s ? "selected" : "" %>><%= h(option) %></option>
+          <% end %>
+        </select>
+      </div>
+      <div><%= act_button("Save", :configure_nickname, community: @community) %></div>
+    </div>
+  </form>
+  <% if @who_can_set == "nobody" %>
+    <p class="note">
+      Set to <code>nobody</code> right now, so nicknames are not being handed out on any surface, chat or this
+      page, and the fields below are flat until it is turned up.
+    </p>
+  <% end %>
+</div>
+
+<div class="card">
+  <h2>Find someone</h2>
+  <form method="get" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/people">
+    <div class="row">
+      <div>
+        <label>Handle or display name</label>
+        <input type="text" name="q" value="<%= h(@query) %>" placeholder="ada">
+      </div>
+      <div><button type="submit">Search</button></div>
+    </div>
+  </form>
+  <p class="muted">
+    Showing up to <%= h(@cap) %>, most recently seen first. A community with more than that has the rest one
+    search away; this page never renders the whole directory at once.
+  </p>
+
+  <% if @rows.empty? %>
+    <% if @query %>
+      <p class="muted">No one seen talking here matches <code><%= h(@query) %></code>.</p>
+    <% else %>
+      <p class="muted">Nobody has been seen talking here yet.</p>
+    <% end %>
+  <% else %>
+    <table>
+      <thead>
+        <tr><th>Platform</th><th>Handle</th><th>Display name</th><th>Last seen</th><th>Bridged as</th></tr>
+      </thead>
+      <tbody>
+        <% @rows.each do |row| %>
+          <% identity = row[:identity] %>
+          <tr>
+            <td><code><%= h(identity.adapter) %></code></td>
+            <td><%= identity.username.to_s.empty? ? "" : "@#{h(identity.username)}" %></td>
+            <td><%= h(identity.display_name) %></td>
+            <td class="muted"><%= h(identity.last_seen_at) %></td>
+            <td>
+              <% if row[:targets].empty? %>
+                <span class="muted">no other bridged platform</span>
+              <% end %>
+              <% row[:targets].each do |target| %>
+                <div style="margin-bottom:0.3rem;">
+                  <form class="inline" method="post"
+                        action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/people">
+                    <input type="hidden" name="q" value="<%= h(@query) %>">
+                    <input type="hidden" name="identity_adapter" value="<%= h(identity.adapter) %>">
+                    <input type="hidden" name="native_id" value="<%= h(identity.native_id) %>">
+                    <input type="hidden" name="username" value="<%= h(identity.username) %>">
+                    <input type="hidden" name="display" value="<%= h(identity.display_name) %>">
+                    <input type="hidden" name="target_adapter" value="<%= h(target[:adapter]) %>">
+                    <label class="muted">on <%= h(target[:adapter]) %></label>
+                    <input type="text" name="nickname" value="<%= h(target[:nickname]) %>" placeholder="(none)"
+                           style="width:12rem;" <%= @who_can_set == "nobody" ? "disabled" : "" %>>
+                    <button class="secondary" type="submit" <%= @who_can_set == "nobody" ? "disabled" : "" %>>Save</button>
+                  </form>
+                </div>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+</div>
+
+<%= erb :_leftover_config, layout: false %>

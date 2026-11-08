@@ -1,0 +1,1236 @@
+// Series A: the polished corporate theme, and the first one built: clean,
+// restrained, quiet confidence, reading as software rather than a sketch.
+//
+// Every colour here is a swatch custom property. No hex, no rgb()/rgba(), no
+// named colour, not even for a border nobody will notice: the contract this
+// whole layer rests on is that a theme compiles once and a swatch recompiles
+// nothing. Definition sits over the primitive it renders, in the order
+// Primitives::NAMES lists them: Page and Section (layout), then Notice,
+// Table, Form, Field, Button, Status, Tag, KeyValues, StatRow, Code and
+// TabLinks (identity), which is what Overview, Endpoints, Features, its config
+// editor and Room games together draw with, then Chart, which Analytics draws.
+//
+// Depth comes from a border rather than a shadow on purpose. A drop shadow
+// wants a translucent black no swatch role names, and a crisp rule reads as
+// more restrained than a soft blur anyway, which is the whole brief.
+
+// The chrome this theme draws around a page (sidebar, topbar, drawer) is its
+// own file, since it is a whole second surface with its own measurements.
+// One compiled stylesheet either way.
+@use "shell";
+@use "../form_fields" as fields;
+
+$font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+// One small scale, used nowhere else, so this theme's typography does not
+// depend on another theme's custom properties: in px, lifted from the
+// mockup, since written in rem they'd resolve against the browser's 16px
+// root while the mockup's body is 14.5px, drawing the whole theme about a
+// quarter looser than the design. $fs-lg and $fs-xl are both 24px, since
+// the mockup draws .stat-value and .page-head h1 at 24px alike, two names
+// for two decisions all the same.
+$fs-xs: 11px;
+$fs-pill: 11.5px;
+$fs-sm: 13px;
+$fs-lede: 13.5px;
+$fs-base: 14.5px;
+$fs-md: 15px;
+$fs-lg: 24px;
+$fs-xl: 24px;
+
+// A table header is the smallest type here, uppercase with the tracking that
+// makes small capitals legible, which is a different weight of voice from the
+// sentence-case row beneath it rather than only a smaller one.
+$fs-th: 10.5px;
+$tracking-caps: 0.05em;
+
+// The two sizes inside a chart's drawing, which are user units in the
+// engine's viewBox rather than screen pixels. Kept apart from the scale above
+// because they answer to the picture's own proportions.
+$fs-chart: 0.7rem;
+$fs-chart-sm: 0.65rem;
+
+$radius: 10px;
+$radius-sm: 6px;
+$radius-control: 8px;
+$border-width: 1px;
+$space-md: 1rem;
+$space-lg: 1.75rem;
+
+// Page
+
+.rb-page {
+  display: block;
+  font-family: $font-family;
+  font-size: $fs-base;
+  color: var(--rb-content-text);
+
+  // The mockup's own reading column and its own ladder. The cap lives here
+  // rather than on the shell's content well because that is where the mockup
+  // puts it, and because two caps meant the smaller one won: the column stayed
+  // one width from 1280 to 1920 while a table went on scrolling sideways.
+  --rb-page-max: 1180px;
+
+  @media (min-width: 1700px) { --rb-page-max: 1440px; }
+  @media (min-width: 2200px) { --rb-page-max: 1680px; }
+}
+
+.rb-page--default { max-width: var(--rb-page-max); }
+
+// Wide asks for more room than the reading column, so it is that column or its
+// own 1400px, whichever is larger. A flat 1400 would be the narrower of the two
+// once the ladder passes it, which would leave a page asking for width getting
+// less of it than the page beside it.
+.rb-page--wide { max-width: max(var(--rb-page-max), 1400px); }
+
+.rb-page-title {
+  font-size: $fs-xl;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 0 0 0.35rem;
+  color: var(--rb-header-text);
+}
+
+// A screen's own right-aligned controls, next to the title rather than
+// stuffed into the first section. The title keeps its own bottom margin when
+// alone; inside the row that margin moves to the row itself so the rhythm
+// underneath does not shift depending on whether a screen hands in actions.
+.rb-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $space-md;
+  margin: 0 0 0.35rem;
+
+  > .rb-page-title { margin: 0; }
+}
+
+.rb-page-actions { flex-shrink: 0; }
+
+.rb-page-lede {
+  margin: 0 0 $space-lg;
+  max-width: 60ch;
+  font-size: $fs-lede;
+  color: var(--rb-muted-text);
+}
+
+.rb-page-body {
+  display: flex;
+  flex-direction: column;
+  gap: $space-lg;
+}
+
+// Section
+
+.rb-section {
+  background: var(--rb-surface);
+  border: $border-width solid var(--rb-border);
+  border-radius: $radius;
+  // The mockup's .card-pad, which is tighter and taller than it is wide.
+  padding: 20px 22px;
+}
+
+.rb-section--default,
+.rb-section--plain {
+  display: block;
+}
+
+// A bare wrapper, with none of the box the default variant draws. Plain is
+// what a body that already carries its own frame is grouped in (a stat grid, a
+// filter row), and the mockup puts both of those straight on the page ground,
+// so a border and a fill here draw a box around a row of boxes.
+.rb-section--plain {
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+
+.rb-section--collapsible {
+  padding: 0;
+
+  > .rb-section-title {
+    display: flex;
+    align-items: center;
+    padding: $space-md $space-lg;
+    cursor: pointer;
+    // A <summary> only carries its native disclosure triangle at its
+    // default `display: list-item`, which the flex row above already gives
+    // up for the click target the whole heading needs to be. list-style:
+    // none is the explicit version of that same fact, so the marker drawn
+    // below is additive rather than fighting a leftover one.
+    list-style: none;
+
+    &::-webkit-details-marker { display: none; }
+
+    &::before {
+      content: "\25B8";
+      display: inline-block;
+      margin-right: 0.5rem;
+      transition: transform 0.15s ease;
+    }
+  }
+
+  // A summary that is itself a row of controls (Features: a toggle switch,
+  // then the title and description) wants its own disclosure marker last
+  // rather than leading, the same direction the mockup draws it.
+  &[data-chevron="end"] > .rb-section-title {
+    &::before { display: none; }
+
+    &::after {
+      content: "\25B8";
+      display: inline-block;
+      flex: 0 0 auto;
+      margin-left: auto;
+      transition: transform 0.15s ease;
+    }
+  }
+
+  &[open] > .rb-section-title {
+    border-bottom: $border-width solid var(--rb-border);
+
+    &::before,
+    &::after { transform: rotate(90deg); }
+  }
+
+  > .rb-section-body { padding: $space-md $space-lg $space-lg; }
+}
+
+// Features' own summary content: a toggle switch, then a title and
+// description, ahead of the chevron above. Plain attribute hooks rather
+// than a bespoke class, kept out of the primitive vocabulary the same way a
+// table cell's own content is.
+.rb-section-title > [data-feature-toggle] {
+  flex: 0 0 auto;
+  margin-right: $space-md;
+}
+
+.rb-section-title > [data-feature-toggle] .rb-form {
+  display: inline-flex;
+}
+
+// The toggle switch: the same permission gated Button every other control
+// on this page is, restyled as a pill and a knob rather than a labelled
+// rectangle. The label stays in the accessible name; font-size collapses
+// it out of view rather than display or visibility, which would take it
+// out of the accessibility tree along with the pixels.
+.rb-section-title > [data-feature-toggle] .rb-button {
+  position: relative;
+  width: 36px;
+  height: 21px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--rb-border-strong);
+  font-size: 0;
+  line-height: 1;
+}
+
+.rb-section-title > [data-feature-toggle] .rb-button::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--rb-surface);
+  transition: transform 0.15s ease;
+}
+
+.rb-section-title > [data-feature-toggle="on"] .rb-button {
+  background: var(--rb-accent-primary);
+}
+
+.rb-section-title > [data-feature-toggle="on"] .rb-button::after {
+  transform: translateX(15px);
+}
+
+// A read-only reader's flat toggle keeps the same shape, just quieter, the
+// same way a flat Button anywhere else on this theme reads.
+.rb-section-title > [data-feature-toggle] .rb-button--flat {
+  background: var(--rb-fill-strong);
+  cursor: not-allowed;
+}
+
+.rb-section-title > [data-feature-toggle] .rb-button--flat::after {
+  background: var(--rb-fill);
+}
+
+.rb-section-title > [data-feature-heading] {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 2px;
+}
+
+.rb-section-title [data-feature-desc] {
+  margin: 0;
+  max-width: 60ch;
+  font-size: $fs-xs;
+  font-weight: 400;
+  color: var(--rb-muted-text);
+}
+
+// A card of feature rows reads as one list, flush against each row's own
+// bottom rule, rather than a stack of separately spaced cards.
+.rb-section-body:has(> .rb-section--collapsible) {
+  gap: 0;
+}
+
+.rb-section-title {
+  font-size: $fs-md;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  margin: 0 0 $space-md;
+  color: var(--rb-header-text);
+}
+
+.rb-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: $space-md;
+
+  // A lone Button dropped straight into a section (an add or a lifecycle
+  // action with no Form of its own around it) is a flex item of this column
+  // container, and align-items' default stretch otherwise pulls it to the
+  // section's full width. Scoped to a direct child so a Button nested inside
+  // a Form or a Table's actions cell, where stretching never applies, is
+  // untouched.
+  > .rb-button,
+  > .rb-actions-row,
+  > .rb-tabs { align-self: flex-start; }
+}
+
+// A Section inside another Section marks a subdivision. The left rule and wash
+// keep that level distinct from the page's white panel treatment. Excludes
+// the collapsible variant, which is a help disclosure rather than a
+// subdivision: caught by this selector too since a plain wrapper's own body
+// is still a .rb-section-body, it painted a neutral explainer in the accent
+// wash the same rule gives a real nested subsection, with square corners
+// where every other card on the page is rounded.
+.rb-section-body > .rb-section:not(.rb-section--collapsible) {
+  padding: $space-md $space-lg;
+  background: color-mix(in srgb, var(--rb-accent-secondary) 8%, var(--rb-surface));
+  border: 0;
+  border-left: 3px solid var(--rb-accent-secondary);
+  border-radius: 0;
+}
+
+// A handful of one-Button forms meant to sit side by side (a proposal's
+// Accept and Reject, say) rather than stack: each form is a flex item of the
+// row rather than of the section body, so it sizes to its Button instead of
+// stretching full width.
+.rb-actions-row {
+  display: flex;
+  gap: $space-md;
+  flex-wrap: wrap;
+
+  > form { display: contents; }
+}
+
+// Notice: a left rule and a tint carry the tone and the text stays at
+// reading ink, which is what the mockup does, since colouring the whole
+// notice turned a four line danger explanation into a paragraph of red
+// body copy. Mixed from the role rather than named, because the swatch has
+// no tint step and a theme may not invent a colour, so a new swatch tints
+// itself.
+$notice-tint: 10%;
+
+.rb-notice {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0.65rem $space-md;
+  font-size: $fs-sm;
+  border-radius: $radius-sm;
+  border: $border-width solid var(--rb-border);
+  border-left-width: 3px;
+  background: var(--rb-background);
+  color: var(--rb-content-text);
+}
+
+// The explanatory tone, and the most common Notice on any screen here. It drew
+// from accent-secondary until the swatch grew a real info role, which put a
+// ruby red bar on every sentence explaining what a page was for.
+.rb-notice--info {
+  border-left-color: var(--rb-info);
+  background: color-mix(in srgb, var(--rb-info) $notice-tint, var(--rb-surface));
+}
+
+.rb-notice--success {
+  border-left-color: var(--rb-success);
+  background: color-mix(in srgb, var(--rb-success) $notice-tint, var(--rb-surface));
+}
+
+.rb-notice--warning {
+  border-left-color: var(--rb-warning);
+  background: color-mix(in srgb, var(--rb-warning) $notice-tint, var(--rb-surface));
+}
+
+.rb-notice--danger {
+  border-left-color: var(--rb-danger);
+  background: color-mix(in srgb, var(--rb-danger) $notice-tint, var(--rb-surface));
+}
+
+// The mark is the one thing that takes the tone at full strength, so a notice
+// read in one colour still says which of the four it is.
+.rb-notice--info .rb-notice-mark { background: var(--rb-info); }
+.rb-notice--success .rb-notice-mark { background: var(--rb-success); }
+.rb-notice--warning .rb-notice-mark { background: var(--rb-warning); }
+.rb-notice--danger .rb-notice-mark { background: var(--rb-danger); }
+
+.rb-notice--empty {
+  background: none;
+  border-style: dashed;
+  border-left-width: $border-width;
+  color: var(--rb-muted-text);
+  font-style: italic;
+}
+
+// A page's own explanation of itself, opened from the collapsible Section
+// wrapping it: capped the same width as the lede, so four sentences of
+// prose read no wider than one.
+.rb-section--collapsible > .rb-section-body > .rb-notice {
+  max-width: 76ch;
+}
+
+.rb-notice-mark {
+  flex: 0 0 auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-top: 0.4em;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+// Button. Primary and secondary differ in fill; destructive differs in
+// shape, since accent and danger share a hue under the Ruby swatch and only
+// shape survives that.
+
+.rb-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font: inherit;
+  font-size: $fs-sm;
+  font-weight: 600;
+  // The mockup's .btn, which is a control rather than a slab: it sits a little
+  // tighter than the old 0.55rem/1.1rem and rounds a step further.
+  padding: 8px 14px;
+  border-radius: $radius-control;
+  // No colour here on purpose: every variant below sets its own border-color
+  // from a swatch role, so this only fixes the width and style shared by all
+  // three, and never resolves to a literal of its own.
+  border: $border-width solid;
+  cursor: pointer;
+  text-decoration: none;
+  // The mockup's own body leading, which is what puts a button at 37.5 tall
+  // rather than the 33.6 a tighter line box gives it.
+  line-height: 1.5;
+}
+
+// Also a table row action's own size: a full-size control in that cell is
+// what pushed a 52px row to 61px, and to 71px on Features' two-button rows.
+.rb-button--small,
+.rb-table-actions .rb-button {
+  padding: 4px 9px;
+  font-size: $fs-xs;
+  line-height: 1.35;
+}
+
+.rb-button--primary {
+  background: var(--rb-accent-primary);
+  border-color: var(--rb-accent-primary);
+  color: var(--rb-on-accent);
+}
+
+.rb-button--secondary {
+  background: var(--rb-surface);
+  border-color: var(--rb-border);
+  color: var(--rb-content-text);
+}
+
+.rb-button--destructive {
+  background: var(--rb-surface);
+  color: var(--rb-danger);
+  border: 3px double var(--rb-danger);
+  // Vertical padding trimmed against the other two variants' 8px: the doubled
+  // border and the mark below both add height a solid 1px border and plain
+  // text do not, and this is what brings all three to the same measured height
+  // rather than merely the same declared padding.
+  padding: 6px 12px;
+}
+
+.rb-button--small.rb-button--destructive { padding: 2px 7px; }
+
+.rb-button-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  border: $border-width solid currentColor;
+  font-weight: 700;
+  font-size: $fs-xs;
+}
+
+.rb-button--flat {
+  background: var(--rb-background);
+  border-color: var(--rb-border);
+  color: var(--rb-muted-text);
+  cursor: not-allowed;
+}
+
+.rb-button:focus-visible {
+  outline: 2px solid var(--rb-focus-ring);
+  outline-offset: 2px;
+}
+
+// StatRow. The numbers carry the screen, so they are the one place this
+// theme goes large; everything around them stays quiet.
+
+.rb-stats {
+  display: grid;
+  // The mockup's own track. 8rem drew six fixed columns of about 135px at
+  // every width alike, which wrapped "platform connections" and "pending
+  // requests" onto two lines and never reflowed, and a 200px floor is what
+  // gives a caption room to stay on one line.
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+// Markup order is value, label, detail (Primitives::StatRow draws the number
+// first); flexed and reordered here so the label reads first the way the
+// mockup lays the tile out, uppercase caption above the number that carries
+// the row, rather than a caption trailing behind a number already read.
+.rb-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  background: var(--rb-surface);
+  border: $border-width solid var(--rb-border);
+  border-radius: $radius;
+  padding: 16px 18px;
+}
+
+.rb-stat-value {
+  order: 2;
+  margin-top: 0.45rem;
+  font-size: $fs-lg;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--rb-header-text);
+  // A stat value is sometimes a word rather than a number, and a word this
+  // theme did not choose the length of breaks rather than spilling out of
+  // its box. Hyphenated where the page's lang attribute (layout.erb sets
+  // lang="en") lets the browser pick a real break point.
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+// Small capitals with tracking, the mockup's own .stat-label. Against the
+// sentence case it drew before this is a different weight of voice rather than
+// only a smaller size.
+.rb-stat-label {
+  order: 1;
+  font-size: $fs-xs;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: $tracking-caps;
+  color: var(--rb-faint-text);
+}
+
+.rb-stat-detail {
+  order: 3;
+  margin-top: 0.3rem;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rb-muted-text);
+}
+
+// Table. Endpoints is the first screen this theme draws with one, so this
+// carries the whole primitive rather than growing with a third screen later:
+// a scrolling wrapper for a table wider than its column, and a right aligned
+// actions cell for the Buttons Table draws last.
+
+// The card is the scrolling wrapper rather than the table inside it, the way
+// the mockup draws .table-scroll. On .rb-table the radius had nothing clipping
+// to it, so the header band's corners stayed square inside the rounded rule.
+// The toolbar above the scrolling wrapper: a filter that narrows the rows
+// already on the page, no request, and the count it keeps current.
+.rb-table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-md;
+  margin-bottom: 0.6rem;
+}
+
+.rb-table-filter-field {
+  flex: 0 1 20rem;
+  font: inherit;
+  font-size: $fs-sm;
+  padding: 0.45rem 0.6rem;
+  border: $border-width solid var(--rb-border-strong);
+  border-radius: $radius-sm;
+  background: var(--rb-fill);
+  color: var(--rb-content-text);
+}
+
+.rb-table-count {
+  flex: 0 0 auto;
+  font-size: $fs-xs;
+  color: var(--rb-muted-text);
+  white-space: nowrap;
+}
+
+.rb-table-scroll {
+  overflow-x: auto;
+  background: var(--rb-surface);
+  border: $border-width solid var(--rb-border);
+  border-radius: $radius;
+}
+
+.rb-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: $fs-sm;
+}
+
+.rb-table th,
+.rb-table td {
+  text-align: left;
+  padding: 11px 14px;
+  font-size: $fs-sm;
+  // Middle, the mockup's own. Top left a wrapped timestamp sitting above the
+  // button in the cell beside it, so no two cells in a row lined up.
+  vertical-align: middle;
+  border-bottom: $border-width solid var(--rb-border);
+}
+
+// A URL has no spaces to break at, so one long address claimed the width it
+// wanted and pushed the actions cell past the edge of the scroll well, cutting
+// a Delete button through its own label. The actions cell is nowrap below, so
+// nothing here breaks a control.
+.rb-table td {
+  overflow-wrap: anywhere;
+}
+
+.rb-table th {
+  padding: 10px 14px;
+  font-size: $fs-th;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: $tracking-caps;
+  white-space: nowrap;
+  color: var(--rb-faint-text);
+  background: var(--rb-background);
+}
+
+.rb-table tr:last-child td {
+  border-bottom: 0;
+}
+
+// nowrap after all: wrapping was chosen to save the table a sideways
+// scroll, but auto table layout starves this column in favour of the
+// description beside it, so Features' three items (a Status pill, a
+// toggle and a Config link) wrapped onto three lines on all twenty-nine
+// rows rather than only when the window was tight. Claiming the column's
+// own width is what makes an actions cell one line, and .rb-table-scroll
+// above is already the answer to a table wider than the space it has.
+.rb-table-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rb-table-actions > * {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.rb-table-actions > * + * {
+  margin-left: 0.4rem;
+}
+
+// Scoped to the table as well as left bare. `.rb-table th` and `.rb-table td`
+// above set text-align on every cell and carry a type selector, so a bare
+// class loses to them and a column asked to align to the end drew left
+// aligned.
+.rb-table .rb-align-end,
+.rb-align-end {
+  text-align: right;
+}
+
+// Chart. The mockup's .chart-wrap: no box of its own, since the Section around
+// it is already the card, and every string inside the drawing sized and
+// coloured here rather than left to inherit the page's own 16px. The sizes
+// below are in the drawing's own coordinates, which is what an SVG font-size
+// means, so they scale with the picture rather than against it.
+
+.rb-chart {
+  // The browser's own `1em 40px` for a figure is what this drew with before,
+  // an indent no other block on the page carries.
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.rb-chart-title {
+  font-size: $fs-sm;
+  font-weight: 600;
+  color: var(--rb-header-text);
+}
+
+.rb-chart-figure {
+  width: 100%;
+  overflow: hidden;
+}
+
+.rb-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+// A category label sits under or beside its own mark, so it takes the page's
+// own face; the mockup draws both of the numeric tiers in monospace.
+.rb-chart-label {
+  font-size: $fs-chart;
+  fill: var(--rb-muted-text);
+}
+
+.rb-chart-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: $fs-chart;
+  font-weight: 600;
+  fill: var(--rb-content-text);
+}
+
+// The axis, a step quieter than the value printed on a mark: the mockup draws
+// its ticks at 10px against a 12.5px reading, and a tick is scaffolding.
+.rb-chart-tick {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: $fs-chart-sm;
+  fill: var(--rb-muted-text);
+}
+
+// The numbers underneath, which is the half a screen reader and a printed page
+// both get. Held to the same rules as .rb-table above rather than left as the
+// browser's own unstyled table.
+.rb-chart-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: $fs-sm;
+}
+
+.rb-chart-table th,
+.rb-chart-table td {
+  text-align: left;
+  padding: 0.4rem $space-md;
+  border-bottom: $border-width solid var(--rb-border);
+}
+
+.rb-chart-table thead th {
+  font-weight: 600;
+  color: var(--rb-muted-text);
+}
+
+.rb-chart-table tbody th {
+  font-weight: 500;
+  color: var(--rb-content-text);
+}
+
+.rb-chart-table tbody tr:last-child td,
+.rb-chart-table tbody tr:last-child th {
+  border-bottom: 0;
+}
+
+// Code, inline only: a table's :code column format is the one way Endpoints
+// reaches this primitive, drawing an HTTP method as monospace rather than
+// prose.
+
+.rb-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  // A step under the prose beside it, the mockup's own .mono: a monospace face
+  // sets wider than a proportional one at the same nominal size.
+  font-size: 12px;
+}
+
+.rb-code--inline {
+  background: none;
+  padding: 0;
+}
+
+// TabLinks. A segmented control rather than a rule under the row: the current
+// tab sits on its own raised chip inside a bordered track, the same pill
+// language Status and Tag already carry.
+
+.rb-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  border: $border-width solid var(--rb-border);
+  border-radius: $radius;
+  background: var(--rb-background);
+}
+
+.rb-tab {
+  padding: 6px 14px;
+  border-radius: $radius-sm;
+  font-size: $fs-sm;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--rb-muted-text);
+
+  &:hover { color: var(--rb-content-text); }
+}
+
+.rb-tab--current {
+  background: var(--rb-surface);
+  color: var(--rb-content-text);
+}
+
+.rb-tab:focus-visible {
+  outline: 2px solid var(--rb-focus-ring);
+  outline-offset: 2px;
+}
+
+// Prose. A rendered markdown document, and the one block here that styles
+// bare elements: everything inside comes from Kramdown rather than from a
+// primitive, so h2 and blockquote are the selectors there are. Measured in ch
+// rather than px so a long licence paragraph stays readable at any root size,
+// while a table or a fenced block is free to use the full width the wide Page
+// variant gives it.
+
+.rb-prose {
+  max-width: 100%;
+  overflow-x: auto;
+  color: var(--rb-content-text);
+  line-height: 1.65;
+
+  p,
+  ul,
+  ol,
+  blockquote {
+    max-width: 74ch;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    color: var(--rb-header-text);
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin: $space-lg 0 0.5rem;
+  }
+
+  > :first-child {
+    margin-top: 0;
+  }
+
+  h1 { font-size: $fs-lg; }
+
+  h2 {
+    font-size: $fs-md;
+    border-bottom: $border-width solid var(--rb-border);
+    padding-bottom: 0.3rem;
+  }
+
+  h3 { font-size: 1rem; }
+  h4 { font-size: $fs-sm; }
+
+  a {
+    color: var(--rb-accent-primary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  img { max-width: 100%; }
+
+  hr {
+    border: 0;
+    border-top: $border-width solid var(--rb-border);
+    margin: $space-lg 0;
+  }
+
+  // A quotation reads as an aside rather than as a box: one rule down the
+  // side, no fill, which is what keeps a licence's indented clauses from
+  // looking like a stack of cards.
+  blockquote {
+    margin: $space-md 0;
+    padding: 0.1rem 0 0.1rem $space-md;
+    border-left: 3px solid var(--rb-border);
+    color: var(--rb-muted-text);
+  }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: $fs-sm;
+  }
+
+  pre {
+    background: var(--rb-background);
+    border: $border-width solid var(--rb-border);
+    border-radius: $radius-sm;
+    padding: 0.7rem 0.85rem;
+    overflow-x: auto;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: $space-md 0;
+    font-size: $fs-sm;
+  }
+
+  th,
+  td {
+    text-align: left;
+    padding: 0.45rem 0.7rem;
+    border-bottom: $border-width solid var(--rb-border);
+  }
+
+  th {
+    background: var(--rb-background);
+    font-weight: 600;
+    color: var(--rb-header-text);
+  }
+}
+
+// ProseToc. A document's own sections ahead of its body, drawn as a bordered
+// card carrying a small caption, so the list reads as chrome around the
+// prose rather than as more of it.
+.rb-prose-toc {
+  max-width: 74ch;
+  margin: 0 0 $space-lg;
+  padding: $space-md;
+  border: $border-width solid var(--rb-border);
+  border-radius: $radius-sm;
+  background: var(--rb-surface);
+
+  p {
+    margin: 0 0 0.5rem;
+    font-size: $fs-xs;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--rb-muted-text);
+  }
+
+  ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  a {
+    color: var(--rb-accent-primary);
+    text-decoration: none;
+
+    &:hover { text-decoration: underline; }
+  }
+}
+
+// Status. The mockup draws its pill as a soft tint patch with no border and
+// a small filled dot, no ring, no glyph: state lives in the tint and in the
+// text beside it. Primitives::STATUS_MARKS still writes a +/x/!/·/? glyph
+// into the mark (aria-hidden, so a screen reader never hears it), which
+// this theme cannot stop drawing without touching that primitive; sized to
+// zero here so the mark reads as the dot the mockup wants instead.
+
+$status-tint: 12%;
+
+.rb-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  background: var(--rb-background);
+  font-size: $fs-pill;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--rb-muted-text);
+}
+
+.rb-status-mark {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: currentColor;
+  font-size: 0;
+  overflow: hidden;
+}
+
+.rb-status--good {
+  background: color-mix(in srgb, var(--rb-success) $status-tint, var(--rb-surface));
+  color: var(--rb-success);
+}
+
+.rb-status--bad {
+  background: color-mix(in srgb, var(--rb-danger) $status-tint, var(--rb-surface));
+  color: var(--rb-danger);
+}
+
+.rb-status--warn {
+  background: color-mix(in srgb, var(--rb-warning) $status-tint, var(--rb-surface));
+  color: var(--rb-warning);
+}
+
+.rb-status--neutral,
+.rb-status--unknown {
+  color: var(--rb-muted-text);
+}
+
+// Tag. A label that is not a state; KeyValues draws a list-valued pair as a
+// run of these.
+
+.rb-tags {
+  display: inline-flex;
+  align-self: flex-start;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.rb-tag {
+  display: inline-block;
+  align-self: flex-start;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  border: $border-width solid var(--rb-border);
+  background: var(--rb-background);
+  font-size: $fs-xs;
+  color: var(--rb-content-text);
+}
+
+// KeyValues: stacked draws one label above its value per line, the one
+// rendering Features uses for a feature's current settings regardless of
+// whether the value is a boolean, a duration or a list (the ERB page this
+// replaces drew those three shapes three different ways: a bare "Defaults"
+// label, inline bold-label chips, a hand-flattened comma line). Inline is
+// not drawn by anything yet, kept here because the primitive itself is not
+// a one-variant thing.
+
+.rb-kv--stacked {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: $space-md;
+  row-gap: 0.4rem;
+  font-size: $fs-sm;
+}
+
+.rb-kv--inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 1.2rem;
+  font-size: $fs-sm;
+}
+
+.rb-kv-key {
+  font-weight: 600;
+  color: var(--rb-header-text);
+}
+
+.rb-kv-value {
+  color: var(--rb-content-text);
+}
+
+// Form: one group of Fields, wrapping, then a submit row last. The fields
+// row's own layout is shared across every theme now, in form_fields.scss.
+
+.rb-form--edit,
+.rb-form--filter,
+.rb-form--action {
+  display: block;
+}
+
+.rb-form-fields {
+  @include fields.form-fields-grid($space-md, $space-lg);
+}
+
+.rb-form-body {
+  display: grid;
+  gap: $space-lg;
+}
+
+.rb-form-submit {
+  margin-top: $space-md;
+}
+
+// The two ways to add a mapping-list row, on one line: a blank entry, or one
+// filled from the preset bank.
+.rb-mapping-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $space-md;
+  margin-top: $space-md;
+}
+
+.rb-mapping-preset {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 0.4rem;
+
+  // A select takes its width from its longest option, and a preset's name is
+  // a whole sentence. Sized to taste but free to shrink, so the pair keeps to
+  // the row instead of wrapping the moment one name runs long.
+  .rb-field-control {
+    width: auto;
+    flex: 1 1 auto;
+    min-width: 8rem;
+    max-width: 16rem;
+  }
+}
+
+.rb-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: $space-md;
+  margin-top: $space-md;
+}
+
+.rb-form-actions .rb-form-submit { margin-top: 0; }
+
+// Validation sits at the far end from the control it qualifies, so a
+// reader crosses it on the way to the submit rather than after pressing.
+.rb-form-actions > .rb-notice {
+  margin: 0 auto 0 0;
+  flex: 1 1 16rem;
+}
+
+// A Form inside a Table's actions cell is one control in a row of
+// controls: Features wraps its toggle Button in one to carry the two
+// hidden fields the POST needs. The block rule above weighed the same as
+// `.rb-table-actions > *` and sat later in the file, so it won and every
+// actions cell on a twenty-nine row Features table stacked onto three
+// lines; naming both classes settles it on specificity rather than source
+// order, and the submit row's own top margin goes with it, being the rest
+// of that height.
+.rb-table-actions .rb-form {
+  display: inline-flex;
+}
+
+.rb-table-actions .rb-form-submit {
+  margin-top: 0;
+}
+
+// The same fix, for a filter Form (a scope select and its View button, on
+// Features and People) sitting in a Page's own actions slot rather than in a
+// table row: the block rule above put the field above the submit, which is
+// what made a 130px-tall column out of a control the mockup draws as one
+// row beside the title, and pushed the lede down by the difference.
+.rb-page-actions .rb-form {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: $space-md;
+}
+
+.rb-page-actions .rb-form-submit {
+  margin-top: 0;
+}
+
+// Field: every Field, whatever type it draws, gets the same label and hint
+// treatment; size is what changes the layout, chosen from what the field
+// means rather than from pixels, and a run of :short fields (a toggle, a
+// small select) wraps several to a row this way, the fix for the ERB
+// config form's own checkbox pile-up where every field claimed a full
+// <div class="cfg-field"> line and several boolean checkboxes read as an
+// undifferentiated stack. Here a toggle is not a checkbox at all (see
+// Field's own :toggle handling), and every hint, whichever field it
+// belongs to, is the same rb-field-hint.
+
+.rb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.rb-field--short {
+  flex: 0 0 auto;
+  width: 11rem;
+}
+
+.rb-field--medium {
+  flex: 0 0 auto;
+  width: 18rem;
+}
+
+.rb-field--full {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+.rb-field-label {
+  font-size: $fs-pill;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--rb-muted-text);
+}
+
+.rb-field-required {
+  margin-left: 0.2rem;
+  color: var(--rb-danger);
+}
+
+.rb-field-hint {
+  margin: 0;
+  font-size: $fs-xs;
+  color: var(--rb-faint-text);
+}
+
+// A select's own content box runs a little taller than an input's at the same
+// font and padding, and the amount varies by platform. An explicit height
+// pins both to one line rather than leaving a select to stand a couple of
+// pixels off the input beside it.
+.rb-field-control {
+  width: 100%;
+  height: 2.35rem;
+  font: inherit;
+  font-size: $fs-sm;
+  padding: 0.45rem 0.6rem;
+  // Recessed onto the fill step rather than sat on the card's own white, so a
+  // control reads as a well cut into the card instead of just an outline on
+  // the same surface as the card around it.
+  border: $border-width solid var(--rb-border-strong);
+  border-radius: $radius-sm;
+  background: var(--rb-fill);
+  color: var(--rb-content-text);
+}
+
+textarea.rb-field-control {
+  height: auto;
+  min-height: 4.5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: $fs-sm;
+}
+
+.rb-field-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+}
+
+// Without this a native radio or checkbox draws in the operating system's own
+// blue, which is nobody's swatch.
+.rb-field-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: $fs-sm;
+  accent-color: var(--rb-accent-primary);
+}
+

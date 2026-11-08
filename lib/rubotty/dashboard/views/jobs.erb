@@ -1,0 +1,30 @@
+<%
+  reader = Rubotty::Dashboard::JobFailures
+  windows = field(
+    name: "window", label: "Window", type: :select, value: @window, size: :short,
+    options: reader.window_options,
+    hint: "How far back to look. A failure older than a week is history rather than an alert."
+  )
+  by_kind = table(
+    columns: [{ key: "kind", header: "Job kind" }, { key: "failures", header: "Failures" },
+              { key: "latest", header: "Most recent" }],
+    rows: reader.by_kind(@failures), empty: "No durable job gave up in this window."
+  )
+  each = table(
+    columns: [{ key: "when", header: "When" }, { key: "kind", header: "Job kind" },
+              { key: "community", header: "Community" }, { key: "attempts", header: "Attempts" },
+              { key: "reason", header: "Why it gave up" }],
+    rows: reader.rows(@failures), empty: "Nothing to list."
+  )
+%>
+<%= page(
+      title: "Jobs",
+      lede: "Durable jobs that gave up rather than retrying again, so a feature that has quietly " \
+            "stopped is visible here rather than only in a log line a restart clears.",
+      sections: section(
+        title: "Window",
+        body: form(action: url("/jobs"), fields: windows, variant: :filter,
+                   submit: button("Filter", action: :view_jobs,
+                                  community: Rubotty::Dashboard::Role::DEPLOYMENT))
+      ) + section(title: "By kind", body: by_kind) + section(title: "Each failure", body: each)
+    ) %>

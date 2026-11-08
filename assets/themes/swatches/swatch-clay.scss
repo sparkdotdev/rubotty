@@ -1,0 +1,108 @@
+// Clay, the monochrome suite: black and grey, with no hue mixed into either
+// one. It used to be a deep red on warm paper, which was a colour suite
+// wearing the wrong name; every neutral below is now a true grey (R, G and B
+// equal at each step) rather than warmed off content-text the way Ruby's are,
+// and accent-primary and accent-secondary are near-black and dark grey in
+// light mode, near-white and light grey in dark mode, rather than a hue at
+// all.
+//
+// danger, success, warning and info stay in colour on purpose: a status a
+// reader has to tell apart from three others should not lean on a monochrome
+// theme's own restraint, so these are Ruby's own values, carried over
+// unchanged because Ruby's backgrounds and surface are close enough in
+// lightness to Clay's own that the pairing they already clear AA at here
+// holds. The two tone-tint checks below were re-derived by hand against
+// Clay's own dark surface rather than assumed, since that composite is the
+// one this contract has failed on before.
+//
+// The series palette keeps five of its own six colours, since they were
+// already proven apart from each other and visible on this background; only
+// the first slot changes, to open on the new accent.
+
+@use "../swatch";
+
+$light: (
+  background: #fafafa,
+  surface: #ffffff,
+  fill: #f0f0f0,
+  fill-strong: #e4e4e4,
+  bg-hover: #ececec,
+  bg-sidebar: #eeeeee,
+  bg-sunken: #e8e8e8,
+  content-text: #1a1a1a,
+  header-text: #000000,
+  muted-text: #595959,
+  faint-text: #636363,
+  accent-primary: #262626,
+  accent-secondary: #404040,
+  accent-fg: #ffffff,
+  on-accent: #ffffff,
+  accent-tint: #f0f0f0,
+  accent-tint-strong: #e0e0e0,
+  accent-tint-border: #c2c2c2,
+  border: #d9d9d9,
+  border-bright: #404040,
+  border-strong: #c2c2c2,
+  danger: #b3261e,
+  success: #146c43,
+  warning: #7a4f00,
+  info: #1f5f9e,
+  danger-tint: #f7e6ec,
+  success-tint: #e4f3ea,
+  warning-tint: #faf0da,
+  info-tint: #e9edfb,
+  code-bg: #141414,
+  code-fg: #e8e8e8,
+  code-comment: #8a8a8a,
+  code-fn: #b8b8b8,
+  code-keyword: #f0f0f0,
+  code-number: #a8a8a8,
+  code-string: #c8c8c8,
+  focus-ring: #262626,
+  overlay-scrim: rgba(20, 20, 20, 0.55),
+  series: (#262626, #3d5f96, #1f7a70, #8a3a86, #7a5a2a, #4a6b1f)
+);
+
+$dark: (
+  background: #141414,
+  surface: #1e1e1e,
+  fill: #262626,
+  fill-strong: #2e2e2e,
+  bg-hover: #292929,
+  bg-sidebar: #202020,
+  bg-sunken: #242424,
+  content-text: #f0f0f0,
+  header-text: #ffffff,
+  muted-text: #b0b0b0,
+  faint-text: #9a9a9a,
+  accent-primary: #e0e0e0,
+  accent-secondary: #c4c4c4,
+  accent-fg: #141414,
+  on-accent: #141414,
+  accent-tint: #292929,
+  accent-tint-strong: #363636,
+  accent-tint-border: #4a4a4a,
+  border: #3a3a3a,
+  border-bright: #c4c4c4,
+  border-strong: #4a4a4a,
+  danger: #ff8a80,
+  success: #6fd39a,
+  warning: #f0c05a,
+  info: #8fb6e0,
+  danger-tint: #463539,
+  success-tint: #2c423e,
+  warning-tint: #433e33,
+  info-tint: #323d4b,
+  code-bg: #141414,
+  code-fg: #e8e8e8,
+  code-comment: #8a8a8a,
+  code-fn: #b8b8b8,
+  code-keyword: #f0f0f0,
+  code-number: #a8a8a8,
+  code-string: #c8c8c8,
+  focus-ring: #e0e0e0,
+  overlay-scrim: rgba(0, 0, 0, 0.65),
+  series: (#e0e0e0, #8fa8e0, #5cc4b6, #dd8ecf, #d0a878, #9ac45f)
+);
+
+@include swatch.emit($light, $dark);

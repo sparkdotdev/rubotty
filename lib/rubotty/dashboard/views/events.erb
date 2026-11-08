@@ -1,0 +1,146 @@
+<h1><%= h(@community.name) %>: events</h1>
+<%= no_rooms_notice(@community) %>
+
+<div class="card">
+  <p class="muted">
+    Schedule a <strong>gaming</strong> or <strong>general</strong> event in one of this community's rooms.
+    Start times are stored and shown in <strong>UTC</strong>; enter one either as UTC directly
+    (<code>2026-07-25 20:00</code>) or with an explicit offset (<code>2026-07-25T20:00-04:00</code>).
+    Timezone is a label shown alongside the time, not a conversion. Events are announced and RSVPs are
+    collected by a separate, later change; this page only lists, creates and cancels.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Room access</h2>
+  <p class="muted">
+    An event can only be scheduled in a room whose <strong>events</strong> feature is turned on; turn it on
+    (and set who may create) from this community's <a href="<%= request.script_name %>/communities/<%= h(@community.slug) %>/features">Features</a> page.
+  </p>
+  <table>
+    <thead><tr><th>Room</th><th>Events enabled</th><th>Who can create</th></tr></thead>
+    <tbody>
+      <% @room_access.each do |entry| %>
+        <tr>
+          <td><code><%= h(entry[:room].label.to_s.empty? ? entry[:room].room_key : entry[:room].label) %></code></td>
+          <td><span class="pill <%= entry[:enabled] ? "on" : "off" %>"><%= entry[:enabled] ? "on" : "off" %></span></td>
+          <td><%= h(entry[:who_can_create]) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Schedule an event</h2>
+  <% if @enabled_rooms.empty? %>
+    <p class="muted">No room has events turned on yet. Enable it for a room above first.</p>
+  <% else %>
+    <form method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/events">
+      <div class="row">
+        <div>
+          <label>Room</label>
+          <select name="room">
+            <% @enabled_rooms.each do |room| %>
+              <option value="<%= h(room.room_key) %>">
+                <%= h(room.label.to_s.empty? ? room.room_key : room.label) %>
+              </option>
+            <% end %>
+          </select>
+        </div>
+        <div style="flex:1; min-width:220px;">
+          <label>Title</label>
+          <input type="text" name="title" maxlength="200" style="width:100%;" placeholder="Friday raid night">
+        </div>
+        <div>
+          <label>Kind</label>
+          <select name="kind">
+            <option value="gaming">gaming</option>
+            <option value="general">general</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Start (UTC, or with an offset)</label>
+          <input type="text" name="starts_at" placeholder="2026-07-25 20:00">
+        </div>
+        <div>
+          <label>Timezone label</label>
+          <input type="text" name="timezone" placeholder="Europe/Lisbon">
+        </div>
+        <div>
+          <label>RSVP mode</label>
+          <select name="rsvp_mode">
+            <option value="none">none</option>
+            <option value="affirm">affirm</option>
+            <option value="full">full</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Game title <span class="muted">(gaming)</span></label>
+          <input type="text" name="game_title" placeholder="Counter-Strike 2">
+        </div>
+        <div>
+          <label>Server address <span class="muted">(gaming)</span></label>
+          <input type="text" name="server_address" placeholder="1.2.3.4:7777">
+        </div>
+        <div style="flex:1; min-width:220px;">
+          <label>Link or place <span class="muted">(general)</span></label>
+          <input type="text" name="url" style="width:100%;" placeholder="https://meet.example/room, or where it happens">
+        </div>
+        <div style="align-self:flex-end;">
+          <%= act_button("Schedule", :configure_events, community: @community) %>
+        </div>
+      </div>
+    </form>
+  <% end %>
+</div>
+
+<div class="card">
+  <h2>Upcoming events</h2>
+  <% if @events.empty? %>
+    <p class="muted">No upcoming events.</p>
+  <% else %>
+    <table>
+      <thead>
+        <tr><th>Title</th><th>Room</th><th>Starts</th><th>Kind</th><th>Detail</th><th>RSVP</th><th>Created by</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% @events.each do |event| %>
+          <% room = @rooms_by_id[event.room_id] %>
+          <tr>
+            <td><%= h(event.title) %></td>
+            <td><code><%= h(room && (room.label.to_s.empty? ? room.room_key : room.label)) %></code></td>
+            <td>
+              <%= h(event.starts_at.strftime("%Y-%m-%d %H:%M UTC")) %>
+              <% if event.timezone && !event.timezone.to_s.empty? %>
+                <span class="muted">(<%= h(event.timezone) %>)</span>
+              <% end %>
+            </td>
+            <td><%= h(event.kind) %></td>
+            <td>
+              <% if event.gaming? %>
+                <%= h([event.game_title, event.server_address].reject { |v| v.to_s.empty? }.join(" @ ")) %>
+              <% else %>
+                <%= h(event.url) %>
+              <% end %>
+            </td>
+            <td><%= h(event.rsvp_mode) %></td>
+            <td><%= h(event.created_by) %></td>
+            <td>
+              <form class="inline" method="post"
+                    action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/events/<%= event.id %>/cancel">
+                <%= act_button("Cancel", :configure_events, community: @community, style: "danger") %>
+              </form>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+</div>
+
+<%= erb :_leftover_config, layout: false %>

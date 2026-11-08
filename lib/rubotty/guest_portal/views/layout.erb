@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>rubotty guest chat</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; height: 100vh; height: 100dvh; display: flex; flex-direction: column;
+           font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+           background: #f2f2f7; color: #111; }
+    header { padding: 0.7rem 1rem; background: #fff; border-bottom: 1px solid #e2e2e6;
+             display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+    header h1 { font-size: 1rem; margin: 0; font-weight: 600; }
+    header .sub { font-size: 0.8rem; color: #8e8e93; }
+    .guest-tag { font-size: 0.72rem; background: #ff9500; color: #fff; padding: 0.08rem 0.45rem;
+                 border-radius: 999px; font-weight: 600; }
+    main { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.35rem; }
+    .row { display: flex; }
+    .row.me { justify-content: flex-end; }
+    .row.them { justify-content: flex-start; }
+    .bubble { max-width: 78%; padding: 0.5rem 0.75rem; border-radius: 1.15rem; line-height: 1.35;
+              word-wrap: break-word; white-space: pre-wrap; font-size: 0.95rem; }
+    .bubble.me { background: #cc342d; color: #fff; border-bottom-right-radius: 0.35rem; }
+    .bubble.them { background: #e5e5ea; color: #111; border-bottom-left-radius: 0.35rem; }
+    .bubble img { max-width: 100%; border-radius: 0.6rem; display: block; margin-top: 0.35rem; }
+    .reactions { margin-top: 0.3rem; font-size: 0.95rem; line-height: 1; }
+    .reactions[hidden] { display: none; }
+    .row.edited .text::after { content: " (edited)"; font-size: 0.68rem; opacity: 0.6; }
+    .who { display: block; font-size: 0.72rem; opacity: 0.75; margin-bottom: 0.15rem; }
+    .who .name { font-weight: 600; }
+    .system { align-self: center; font-size: 0.78rem; color: #8e8e93; text-align: center;
+              padding: 0.3rem 0.6rem; }
+    .composer { display: flex; gap: 0.5rem; padding: 0.7rem; background: #fff;
+                border-top: 1px solid #e2e2e6; }
+    input { flex: 1; padding: 0.6rem 0.9rem; border: 1px solid #d1d1d6; border-radius: 999px;
+            font: inherit; background: #fff; }
+    .attach { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+              width: 2.3rem; height: 2.3rem; border-radius: 999px; background: #e5e5ea; color: #cc342d;
+              font-size: 1.4rem; font-weight: 600; line-height: 1; cursor: pointer; user-select: none; }
+    button { border: 0; border-radius: 999px; background: #cc342d; color: #fff; font: inherit;
+             font-weight: 600; padding: 0.6rem 1.1rem; cursor: pointer; }
+    button:disabled { opacity: 0.45; cursor: default; }
+    .notice { padding: 0.5rem 1rem; text-align: center; font-size: 0.82rem; }
+    .notice.warn { background: #fff3cd; color: #7a5b00; }
+    .notice.retention { background: #eef1f4; color: #48505c; display: flex; align-items: center;
+                         justify-content: center; gap: 0.6rem; text-align: left; }
+    .notice.retention[hidden] { display: none; }
+    .notice.retention button { background: none; border: 0; color: inherit; font-size: 1.1rem;
+                                line-height: 1; padding: 0 0.2rem; opacity: 0.6; flex: 0 0 auto; }
+    .notice.retention button:hover { opacity: 1; }
+    .center { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center;
+              flex-direction: column; gap: 0.6rem; text-align: center; padding: 2rem; }
+    .center h1 { margin: 0; font-size: 1.4rem; }
+    .center p { margin: 0; color: #8e8e93; max-width: 26rem; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #000; color: #e8e8ea; }
+      header { background: #1c1c1e; border-color: #2c2c2e; }
+      header .sub { color: #9a9aa0; }
+      .composer { background: #1c1c1e; border-color: #2c2c2e; }
+      .bubble.them { background: #26262a; color: #e8e8ea; }
+      input { background: #2c2c2e; color: #e8e8ea; border-color: #3a3a3c; }
+      input::placeholder { color: #8e8e93; }
+      .system { color: #9a9aa0; }
+      .attach { background: #2c2c2e; color: #ff6b63; }
+      .notice.retention { background: #1c1c1e; color: #c7c7cc; }
+      .notice.warn { background: #3a2f00; color: #ffd970; }
+      .center p { color: #9a9aa0; }
+    }
+  </style>
+</head>
+<body>
+  <%= yield %>
+</body>
+</html>

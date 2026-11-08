@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<policymap>
+  <!-- Raster attachments only; deny external delegates, XML and EXR decoders. -->
+  <policy domain="delegate" rights="none" pattern="*"/>
+  <policy domain="filter" rights="none" pattern="*"/>
+  <policy domain="path" rights="none" pattern="@*"/>
+  <policy domain="path" rights="none" pattern="|*"/>
+  <policy domain="module" rights="none" pattern="*"/>
+  <policy domain="module" rights="read | write" pattern="{JPEG,PNG,WEBP,GIF,HEIC,AVIF,BMP,TIFF,PNM}"/>
+  <policy domain="coder" rights="none" pattern="*"/>
+  <policy domain="coder" rights="read | write" pattern="{JPEG,JPG,PNG,PNG8,PNG24,PNG32,PNG48,PNG64,WEBP,GIF,HEIC,HEIF,AVIF,BMP,BMP2,BMP3,TIFF,TIFF64,PGM,PPM,PNM,PAM}"/>
+  <policy domain="resource" name="thread" value="2"/>
+  <policy domain="resource" name="time" value="20"/>
+  <policy domain="resource" name="width" value="16KP"/>
+  <policy domain="resource" name="height" value="16KP"/>
+  <policy domain="resource" name="area" value="64MP"/>
+  <policy domain="resource" name="memory" value="128MiB"/>
+  <policy domain="resource" name="map" value="128MiB"/>
+  <policy domain="resource" name="disk" value="128MiB"/>
+  <policy domain="resource" name="list-length" value="16"/>
+</policymap>

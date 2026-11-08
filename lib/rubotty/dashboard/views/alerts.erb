@@ -1,0 +1,20 @@
+<h1><%= h(@community.name) %>: alerts</h1>
+
+<div class="card muted">
+  Everything this community's scripts have raised with <code>rubotty.alert</code>, newest first.
+  A quiet alert is recorded here and nothing else happens. A loud one, written
+  <code>rubotty.alert(text, "loud")</code>, is recorded the same way and rubotty also DMs this
+  community's operators. A DM only reaches an operator on a platform rubotty can open one on, and
+  only where they have messaged the bot before, so a loud alert that reached nobody says so in the
+  How column rather than looking like it went out.
+  Alerts are kept for <%= Rubotty::ControlPlane::Alerts::RETENTION / (24 * 60 * 60) %> days.
+</div>
+
+<% if @unseen.positive? %>
+  <form class="inline" method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/alerts/seen">
+    <%= act_button("Mark all #{@unseen} seen", :manage_alerts, community: @community) %>
+  </form>
+<% end %>
+
+<%= alerts_table(@alerts, community: @community,
+                 empty: "No script in this community has raised an alert.") %>

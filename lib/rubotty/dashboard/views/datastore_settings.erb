@@ -1,0 +1,28 @@
+<%
+  export_warning = notice(
+    "Includes every community's data, and every secret this deployment stores in its own database " \
+    "(API keys, tokens, connection settings). Treat the download like any other credential. Rehosted " \
+    "files and guest uploads are metadata only here; their bytes live in the object store and are not " \
+    "included.",
+    tone: :warning
+  )
+  download = button("Download snapshot (.yaml.gz)", action: :export_datastore, community: Rubotty::Dashboard::Role::DEPLOYMENT,
+                    to: url("/settings/datastore/export"))
+
+  import_warning = notice(
+    "Restores into THIS deployment's datastore. Only ever succeeds against one with no data yet, so " \
+    "this is for a freshly bootstrapped box, not merging into a running one.",
+    tone: :warning
+  )
+  upload_field = field(name: "file", label: "Snapshot file", type: :file, required: true,
+                       hint: "A .yaml.gz snapshot from Download snapshot above, or `rubotty datastore export`.")
+  upload = form(action: url("/settings/datastore/import"), fields: upload_field,
+               submit: button("Restore snapshot", action: :import_datastore, community: Rubotty::Dashboard::Role::DEPLOYMENT), enctype: "multipart/form-data")
+%>
+<%= page(
+  title: "Datastore",
+  lede: "A portable, engine-independent snapshot of the whole datastore, for moving to a new " \
+        "deployment or keeping an ad-hoc backup.",
+  sections: section(title: "Export", body: export_warning + download) +
+            section(title: "Import", body: import_warning + upload)
+) %>

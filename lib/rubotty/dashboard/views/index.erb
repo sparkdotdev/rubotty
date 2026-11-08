@@ -1,0 +1,41 @@
+<% if @waiting_spaces.positive? %>
+  <div class="card">
+    <p>
+      <strong><%= h(@waiting_spaces) %></strong>
+      <%= @waiting_spaces == 1 ? "space is" : "spaces are" %> waiting on a decision.
+      Accept or reject on <a href="<%= url("/onboarding") %>">Onboarding</a>.
+    </p>
+  </div>
+<% end %>
+
+<h1>Communities</h1>
+
+<%# The full README used to render below the table; it lives on Documentation
+    now, which already answers what the panel does without a trip to GitHub. %>
+<p class="muted">
+  Every community this deployment bridges, one row each. See
+  <a href="<%= request.script_name %>/documentation">Documentation</a> for what the panel does and how to script it.
+</p>
+
+<% if @communities.empty? %>
+  <div class="card muted">No communities yet. Seed one with <code>rubotty seed</code>.</div>
+<% else %>
+  <table>
+    <thead>
+      <tr><th>Slug</th><th>Name</th><th>Status</th><th>Channels</th><th>Operators</th><th>Pending</th></tr>
+    </thead>
+    <tbody>
+      <% @communities.each do |entry| %>
+        <% c = entry[:row] %>
+        <tr>
+          <td><a href="<%= request.script_name %>/communities/<%= h(c.slug) %>"><%= h(c.slug) %></a></td>
+          <td><%= h(c.name) %></td>
+          <td><span class="pill <%= c.status == "active" ? "active" : "suspended" %>"><%= h(c.status) %></span></td>
+          <td><%= entry[:channels] %></td>
+          <td><%= entry[:operators] %></td>
+          <td><%= entry[:pending].positive? ? "<strong>#{entry[:pending]}</strong>" : "0" %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>

@@ -1,0 +1,32 @@
+<%# One row of a mapping-list field: a labelled control per nested schema %>
+<%# field, plus a Kind select when the field also takes a bare-string %>
+<%# shorthand (word_filter's plain word alongside its full rule). %>
+<div class="cfg-mapping-row">
+  <div class="row">
+    <% if string_variant %>
+      <div class="cfg-field">
+        <label>Kind</label>
+        <select name="<%= h(field.name) %>[<%= index %>][_kind]" class="cfg-mapping-kind">
+          <option value="word" <%= mapping_row_kind(entry) == "word" ? "selected" : "" %>>Simple word</option>
+          <option value="rule" <%= mapping_row_kind(entry) == "rule" ? "selected" : "" %>>Full rule</option>
+        </select>
+      </div>
+    <% end %>
+    <% schema.fields.each_value do |sub_field| %>
+      <% rule_only = string_variant && sub_field.name.to_s != "pattern" %>
+      <% hide = rule_only && mapping_row_kind(entry) == "word" %>
+      <div class="cfg-field<%= rule_only ? " cfg-mapping-rule-only" : "" %>" <%= hide ? "hidden" : "" %>>
+        <label<%= sub_field.description ? %( title="#{h(sub_field.description)}") : "" %>>
+          <%= h(config_field_label(sub_field)) %><%= sub_field.required ? " *" : "" %>
+        </label>
+        <%= erb :_config_input, layout: false,
+                locals: { field: sub_field, name: "#{field.name}[#{index}][#{sub_field.name}]",
+                           value: mapping_row_value(entry, sub_field) } %>
+      </div>
+    <% end %>
+    <div class="cfg-field cfg-mapping-remove-field">
+      <label>&nbsp;</label>
+      <button type="button" class="danger cfg-mapping-remove">Remove</button>
+    </div>
+  </div>
+</div>

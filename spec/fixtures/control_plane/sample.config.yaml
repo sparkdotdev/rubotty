@@ -1,0 +1,494 @@
+# Control-plane spec fixture: SAMPLE Telegram and Discord
+#
+# Owned by the control-plane spec suite (spec/support/control_plane_helpers.rb),
+# not by the deployment. It mirrors the shape of a real, working configuration
+# (the same rooms, endpoints and account layout the repository's own
+# bridge.config.yaml example documents) so specs seeded from it exercise a
+# realistic topology, without the specs depending on the deployment's own
+# config file, or the deployment's config file being pinned to whatever shape
+# the specs happen to need. See issue #1355.
+#
+# Read it as fixture data, not as schema documentation; bridge.config.yaml at
+# the repository root is the documented example for that. The format is
+# generic: N endpoints per room, any adapter, any mix. This fixture happens to
+# be seven pairwise rooms, which is just the N=2 case repeated.
+#
+# SECRETS ARE NOT STORED HERE. Every credential is named by the environment
+# variable that holds it, and the loader refuses to start if one is unset.
+
+version: 1
+name: SAMPLE
+
+# ---------------------------------------------------------------------------
+# Accounts: one credentialed connection per platform. Several endpoints share
+# an account, and one platform may have several accounts if an operator wants
+# separate bots for separate rooms.
+# ---------------------------------------------------------------------------
+accounts:
+  telegram:
+    adapter: telegram
+    token_env: TELEGRAM_BOT_TOKEN
+
+    # long_polling works anywhere with no inbound connectivity and is the
+    # default. Switch to webhook and set webhook_url to run behind a
+    # Cloudflare Tunnel or a reverse proxy on 443.
+    transport: long_polling
+    # transport: webhook
+    # webhook_url: https://bridge.example.com/telegram/webhook
+    # webhook_secret_env: TELEGRAM_WEBHOOK_SECRET
+
+    # Do not replay everything that queued while the bridge was down. Without
+    # this, a restart after an outage floods every room with stale history.
+    skip_backlog: true
+
+    # Publish the bot's command list to Telegram at start, so typing / in a
+    # chat suggests the commands with their descriptions. The list is built
+    # from the same registry Discord's slash commands and /help read, and is
+    # written to two scopes: the public commands by default, the full set to
+    # group administrators. Telegram scopes this to the BOT, not to a chat, so
+    # the write reaches every chat this token serves. Set to false when the
+    # token is shared and this deployment should not own its menu.
+    register_commands: true
+
+    # The unsend gesture, carried over from TediCross under its original name.
+    # Editing a message to a single full stop removes it here and everywhere it
+    # was relayed. Telegram sends no delete event, so this is the only removal
+    # path that works without configuring operators, and the community has three
+    # years of muscle memory for it. Set to false to turn it off.
+    cross_delete_on_discord: true
+
+  discord:
+    adapter: discord
+    token_env: DISCORD_BOT_TOKEN
+
+    # The MESSAGE_CONTENT intent is added automatically and is not optional:
+    # without it Discord delivers every message with an empty body. It is a
+    # PRIVILEGED intent, so it must also be enabled for the application in the
+    # Discord Developer Portal, under Bot, Privileged Gateway Intents.
+    #
+    # direct_messages and direct_message_reactions are here so a DM to the bot,
+    # and a reaction placed on one, actually reach the gateway; neither is
+    # privileged.
+    intents: [servers, server_messages, server_message_reactions, direct_messages, direct_message_reactions]
+
+    # Name given to webhooks the bridge creates, so they are identifiable in a
+    # channel's integration settings and can be removed there.
+    webhook_name: rubotty
+
+  # Stoat, declared with NO endpoints mapped to it (issue #203). The adapter
+  # connects and its channel-discovery seam enumerates the bot's servers and
+  # channels, but because no endpoint here belongs to any room, it relays
+  # nothing in either direction: it is online and dormant. The discovered
+  # channels appear on the dashboard's Discovered connections page, where an
+  # operator maps them into rooms with no restart (issue #213). Mapping one is
+  # what actually starts bridging, and is a separate deliberate act.
+  stoat:
+    adapter: stoat
+    token_env: STOAT_BOT_TOKEN
+
+  # Fluxer, declared the same way and for the same reason: the credential is
+  # the only part nothing can work out for itself, so it is the only part
+  # written down. No guild or channel is named here. The bot enumerates what
+  # it can see at connect, its channels reach Discovered connections, and
+  # mapping one into a room stays a deliberate act by an operator.
+  fluxer:
+    adapter: fluxer
+    token_env: FLUXER_BOT_TOKEN
+
+  # NOT ENABLED for this deployment: an example only, so the two IRC bridging
+  # modes (issue #205) are documented in a real config file, not just in
+  # lib/rubotty/adapters/irc/adapter.rb. See `bin/rubotty schema` for the
+  # full field reference.
+  #
+  # irc:
+  #   adapter: irc
+  #   server: irc.libera.chat
+  #   nick: sample-bridge
+  #   # Many networks require this before they admit a +r channel; completed
+  #   # before a single JOIN is sent (see Client#connect).
+  #   sasl_user: sample-bridge
+  #   sasl_password_env: IRC_LIBERA_SASL_PASSWORD
+  #   # per_room (the default, and the shape every other platform uses) needs
+  #   # no mode here at all: each rooms[].endpoints[] entry below just names
+  #   # its own irc channel, exactly like tg-gaming and dc-gaming do above.
+  #   #
+  #   # hub instead mirrors every bridged room into ONE channel: uncomment
+  #   # mode/hub_channel below, and give each room's irc endpoint the SAME
+  #   # channel plus its own room_label, with receives: true on at most one
+  #   # of them (the "default room" a message typed in the hub channel goes
+  #   # to; omit receives entirely, or set it false on all of them, for a
+  #   # read-only hub that never relays outward). See the "Bridging modes"
+  #   # section of lib/rubotty/adapters/irc/adapter.rb for the full rationale.
+  #   # mode: hub
+  #   # hub_channel: "#sample"
+
+# ---------------------------------------------------------------------------
+# Storage: the message map for edit and delete propagation, plus reaction
+# aggregate state.
+#
+# sqlite is the default and needs no external service. Switch to pg when
+# several processes share one bridge, or when you already run PostgreSQL:
+#
+#   storage:
+#     driver: pg
+#     url_env: DATABASE_URL
+#
+# The retired deployment ran with persistence OFF, which silently dropped the
+# ability to propagate edits and deletes for anything sent before the last
+# restart. Do not repeat that.
+# ---------------------------------------------------------------------------
+storage:
+  driver: sqlite
+  path: data/message_map.sqlite3
+  auto_migrate: true
+
+behaviour:
+  # How long a message stays eligible for edit and delete propagation, and how
+  # long reaction state is kept.
+  message_ttl: 24 hours
+  # How long the record that a message was already relayed is kept. Backfill
+  # checks it before re-feeding anything, so this has to outlast the longest
+  # lookback any channel is configured with or a sweep re-posts what it finds.
+  # A week against a 72 hour lookback leaves plenty of room.
+  relay_claim_ttl: 7 days
+  purge_interval: 1 hour
+  log_level: info
+
+  # How long a guest portal session's captured messages and uploads are kept
+  # AFTER its access expires.
+  #
+  # While a guest session is open the bot captures the room's messages so the
+  # guest web chat can display them, which means real members' messages are
+  # written to the database. 0, the default, reclaims them the moment the
+  # session ends: the session is the purpose, so when it ends the data goes.
+  # Set a duration only if you have a stated reason to keep guest chat longer
+  # (abuse review, say); it is the period you would have to justify. Revoking
+  # an invite always deletes immediately, whatever this says.
+  guest_retention: 0
+
+  # Where rubotty keeps the bulk bytes of a file it is hosting on a room's
+  # behalf: a file too big for one of the room's platforms, or one somebody
+  # handed over with /upload. Nothing is written here until a community turns
+  # the file_rehosting feature on.
+  #
+  # THIS MUST POINT AT DURABLE STORAGE. The default below is inside the
+  # container and is fine for local development and nothing else: a redeploy
+  # replaces the container and every file with it. On the production host the
+  # value is the mounted disk, /mnt/bulk-storage. RUBOTTY_FILE_STORE in the
+  # environment overrides this, which is how a deployment names its own mount
+  # without editing this file.
+  #
+  # rubotty writes a marker file into this directory the first time it uses it,
+  # and refuses to start using a directory that has content but no marker. That
+  # is on purpose: the production mount is `nofail`, so a disk that did not come
+  # up leaves an ordinary empty directory in its place, and writing there would
+  # fill the root filesystem and vanish the moment the disk came back.
+  #
+  # Files stored here are compressed and then encrypted, with a key that exists
+  # only inside the download link. Nothing in the database can decrypt them, and
+  # neither can anybody holding a copy of the disk.
+  file_store_path: data/object-store
+
+  # When somebody replies to a message the bridge never relayed (it predates the
+  # bridge, or its map entry expired), a native reply is impossible, so the
+  # parent is quoted instead. Set reply_preview_chars to 0 to turn quoting off.
+  reply_preview_chars: 100
+  reply_preview_lines: 2
+
+  # Noticing a merge that never deployed.
+  #
+  # A deploy that is never triggered leaves nothing behind to look at: the
+  # queue is empty, the container reports itself healthy, and the only symptom
+  # is a version number that quietly stops moving. Point deploy_head_url at
+  # something that answers with the head commit of the default branch and the
+  # dashboard header will say so when the running commit falls behind it.
+  #
+  # Two shapes work. A file a CI job writes the merged sha into needs no
+  # credential at all and is the better arrangement for a private repository.
+  # GitHub's own commits endpoint works too, and for a private repository that
+  # needs a token: name the environment variable holding it in
+  # deploy_head_token_env, the way every other secret here is named rather than
+  # written down.
+  #
+  #   deploy_head_url: https://api.github.com/repos/OWNER/REPO/commits/main
+  #   deploy_head_token_env: RUBOTTY_DEPLOY_HEAD_TOKEN
+  #
+  # Left unset, as it is here, nothing is compared and the header shows nothing.
+  # A check that cannot reach its upstream is silent too, since a warning about
+  # the warning helps nobody.
+  #
+  # deploy_drift_grace is how long the two may differ before the header says so.
+  # A deploy takes several minutes, so anything shorter warns on every merge on
+  # its way out. The same window covers the bot and web processes disagreeing
+  # about their version, which they can do on their own since they deploy
+  # separately.
+  deploy_drift_grace: 15 minutes
+
+# ---------------------------------------------------------------------------
+# Identity map: one human, their accounts on each platform.
+#
+# Used to make mentions cross. `@alex` typed on Telegram becomes a real ping on
+# Discord for the same person, instead of arriving as inert text. Somebody not
+# listed here still reads correctly, they simply do not get pinged.
+#
+# Separate from `operators:` on purpose. Operators are the few people who may
+# delete messages; mentionable people are everybody who wants their name to
+# ping. Operators are folded in automatically, so nobody needs listing twice.
+#
+# `handles` matters for Telegram: a plain @mention carries no user id, so the
+# username is the only thing there is to match on.
+# ---------------------------------------------------------------------------
+# LEAVING THIS COMMENTED OUT MEANS MENTIONS NEVER PING. Every @mention still
+# arrives as readable text on the other platform, which is a correct and
+# harmless outcome, but nobody is notified. Uncomment and fill in real ids to
+# turn pinging on.
+#
+people:
+  - name: sample_owner
+    identities:
+      telegram: ["80000012"]
+      discord: ["80000000000000013"]
+    handles:
+      # Telegram sends @handle mentions with no user id, so the handle is the
+      # only thing to match on. Discord mentions carry the id, so no discord
+      # handle is needed here.
+      telegram: ["sample_owner"]
+
+# ---------------------------------------------------------------------------
+# Startup banner.
+#
+# One room per restart, posted directly to every endpoint in it so both sides
+# see it. It does NOT relay: the bot posts to each endpoint itself, and loop
+# prevention would drop a relayed copy anyway because the bot authored it.
+#
+# There is no default target, because nothing here identifies a "main" room.
+# The banner is a diagnostic, so send it wherever service messages already
+# belong; this deployment uses general, set below. Leave `room` unset and
+# nothing is posted anywhere.
+#
+# detail: minimal   service, version and commit. THE DEFAULT.
+# detail: full      also prints the Ruby build, hostname, kernel and
+#                   distribution. That tells everyone who can read the room
+#                   which CVEs might apply to your host, so pick it knowing
+#                   who is in there.
+# ---------------------------------------------------------------------------
+announce:
+  # General is the right home for a diagnostic: it is where service messages
+  # already land, so a restart notice is in keeping rather than an intrusion
+  # into a conversation topic.
+  room: general
+  # full is deliberate here. It adds the Ruby build, hostname, kernel and
+  # distribution to the service, version and commit line, which is what makes
+  # the banner worth reading after a deploy. Everyone in general can see it,
+  # host details included, and that is accepted.
+  detail: full
+  suppress_window: 1 hour
+  # Remove the banner from every endpoint it posted to after this many seconds,
+  # so a restart diagnostic does not linger. 0 keeps it. A suppressed banner is
+  # never scheduled for deletion, because it was never posted. Two minutes so
+  # the "it is up, version X" confirmation is actually seen before it goes.
+  delete_after: 120
+
+# ---------------------------------------------------------------------------
+# Moderation commands.
+#
+# A command issued at any endpoint executes across every endpoint in that room.
+# `/delete`, in reply to a message, removes that message everywhere.
+#
+# Authorisation is by PERSON, not by platform. One entry holds all of somebody's
+# identities, so removing them revokes access everywhere at once rather than
+# leaving a stale entry on one platform.
+#
+# Nobody moderates anything until at least one operator is listed. An
+# unrecognised user issuing a command is refused and told so where they typed
+# it, and the command never carries on to the other platforms either way.
+#
+# The ids below are placeholders. Replace them with real numeric ids: for
+# Telegram, message @userinfobot; for Discord, enable Developer Mode and use
+# Copy User ID.
+# ---------------------------------------------------------------------------
+# LEAVING THIS COMMENTED OUT MEANS /delete, /ban, /kick, /mute AND /pin DO NOT
+# EXIST. Commands fail closed: with no operators configured on a config-only
+# deployment the parser is never built, so the verbs go unread.
+#
+# The unsend gesture (edit a message to a single full stop) is NOT affected and
+# works without any of this, which is why it is the removal path most people
+# will use. See cross_delete_on_discord on the telegram account above.
+#
+operators:
+  - name: sample_owner
+    identities:
+      telegram: ["80000012"]
+      discord: ["80000000000000013"]
+
+commands:
+  enabled: true
+  # The markers a command may start with. "/" is natural on Telegram; "!" is
+  # added for Discord, where a leading "/" opens the native slash-command UI and
+  # never reaches the bot as plain text. Both work everywhere by default, so
+  # "/delete" and "!delete" are equivalent. Only a RECOGNISED command is
+  # consumed, so an unknown "!word" (or "/word") still relays normally. Every
+  # command surface (moderation, the operator flow, warnings, FAQ triggers)
+  # honours the same set. See issue #75.
+  prefixes: ["/", "!"]
+  # delete, pin and unpin act on the replied message. ban, kick, mute and
+  # unmute act on its author, and need that person listed under people: or
+  # operators: for the bridge to know who they are on the other platform.
+  actions: [delete, pin, unpin, ban, kick, mute, unmute]
+  # Wait this many seconds before a command takes effect, then remove the
+  # command message and its acknowledgement so operational noise does not
+  # linger. The acknowledgement is edited in place to the outcome first, then
+  # deleted the same number of seconds later. 0 disables the grace period: the
+  # command acts at once and its acknowledgement persists (the original
+  # behaviour). Anyone may /delete their own message; every other verb stays
+  # operator only.
+  cleanup_after: 15
+
+# ---------------------------------------------------------------------------
+# Sender name rendering.
+#
+# The default is the structured cross platform label (issue #19):
+#
+#   <b>username</b>@platform [display name]
+#
+# where only the username is bold and "@platform" is the ORIGIN platform (so a
+# Discord user reads on Telegram as "<b>owner_handle</b>@discord [River (Alex)]",
+# and a Telegram user reads on Discord as "**sample_owner**@telegram [Alex
+# S]"). Bold is rendered per platform; the "@platform" token comes from the
+# origin adapter, so a future federated platform would supply its homeserver.
+#
+# No template is set here, so this deployment gets that default. A `format`
+# (optionally with `fallback_format`) may still be set globally, per room, or
+# per endpoint to OVERRIDE it with the older "{first_name} ({username})" style;
+# see docs and `bin/rubotty schema` for the available fields. An override
+# renders to plain text with the whole label bold, the pre issue #19 behaviour.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Rooms. Each is a set of endpoints that mirror each other. A message arriving
+# at any endpoint fans out to all the others.
+#
+# Here: Telegram forum topics inside supergroup -1008000000001, each paired
+# with one Discord channel. Comments are the topic names as of extraction on
+# 2026-07-22.
+# ---------------------------------------------------------------------------
+rooms:
+  # ---------------------------------------------------------------------
+  # THE GENERAL TOPIC IS NOT BRIDGED BY THE SEVEN PAIRS BELOW.
+  #
+  # TediCross bridged the supergroup itself to Discord channel
+  # 800000000000000011, which caught every message with no message_thread_id.
+  # In a Telegram forum that is the General topic, and it is also where the
+  # service messages land: joins, leaves, pins, title changes.
+  #
+  # So without this room, two things stop: General stops bridging entirely, and
+  # join and leave notices vanish even for the seven topics that do bridge.
+  #
+  # Both ids below come from the TediCross settings.yaml that ran in production
+  # for three years (bridge level telegram.chatId and discord.channelId), so
+  # they are confirmed rather than assumed. The Telegram side carries NO
+  # thread_id, which is what makes it General.
+  # ---------------------------------------------------------------------
+  - id: general
+    label: GENERAL
+    endpoints:
+      - id: tg-general
+        adapter: telegram
+        account: telegram
+        chat_id: "-1008000000001"
+        # No thread_id: this is the General topic and the service messages.
+      - id: dc-general
+        adapter: discord
+        account: discord
+        channel_id: "800000000000000011"
+
+  - id: gaming
+    label: GAMING & SCHEDULING
+    endpoints:
+      - id: tg-gaming
+        adapter: telegram
+        account: telegram
+        chat_id: "-1008000000001"
+        thread_id: 142483
+      - id: dc-gaming
+        adapter: discord
+        account: discord
+        channel_id: "8000000000000000003"
+
+  - id: travel
+    label: TRAVEL
+    endpoints:
+      - id: tg-travel
+        adapter: telegram
+        account: telegram
+        chat_id: "-1008000000001"
+        thread_id: 142565
+      - id: dc-travel
+        adapter: discord
+        account: discord
+        channel_id: "8000000000000000004"
+
+  - id: news
+    label: NEWS & POLITICS
+    endpoints:
+      - id: tg-news
+        adapter: telegram
+        account: telegram
+        chat_id: "-1008000000001"
+        thread_id: 142796
+      - id: dc-news
+        adapter: discord
+        account: discord
+        channel_id: "8000000000000000006"
+
+  - id: technology
+    label: TECHNOLOGY & SCIENCE
+    endpoints:
+      - id: tg-technology
+        adapter: telegram
+        account: telegram
+        chat_id: "-1008000000001"
+        thread_id: 142794
+      - id: dc-technology
+        adapter: discord
+        account: discord
+        channel_id: "8000000000000000005"
+
+  - id: shitposting
+    label: SHITPOSTING & MEMES
+    endpoints:
+      - id: tg-shitposting
+        adapter: telegram
+        account: telegram
+        chat_id: "-1008000000001"
+        thread_id: 142911
+      - id: dc-shitposting
+        adapter: discord
+        account: discord
+        channel_id: "8000000000000000007"
+
+  - id: media
+    label: MEDIA
+    endpoints:
+      - id: tg-media
+        adapter: telegram
+        account: telegram
+        chat_id: "-1008000000001"
+        thread_id: 156122
+      - id: dc-media
+        adapter: discord
+        account: discord
+        channel_id: "8000000000000000008"
+
+  - id: ai-generated
+    label: AI GENERATED CONTENT
+    endpoints:
+      - id: tg-ai-generated
+        adapter: telegram
+        account: telegram
+        chat_id: "-1008000000001"
+        thread_id: 156123
+      - id: dc-ai-generated
+        adapter: discord
+        account: discord
+        channel_id: "8000000000000000009"

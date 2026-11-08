@@ -1,0 +1,314 @@
+<h1><%= h(@community.name) %>: <%= @script ? h(@script.name) : "new script" %></h1>
+
+<%= notice("A script that is on runs on real messages. It sits immediately before the bridge, so a rule " \
+           "that rejects or rewrites gets the last word on what the other platforms see.",
+           tone: :warning) %>
+
+<%= help_disclosure(
+      ["Everything here is provisional while scripts are in alpha: the function list, what a script is " \
+       "handed and the shape it returns can all change in ways that break scripts you have already " \
+       "written. Do not build anything you would be upset to rewrite.",
+       "Turning the Scripts feature off for a room stops all of them at once, whatever each one says " \
+       "here.",
+       "The reference has every function with its arguments, what it answers and a line you can copy, " \
+       "plus the triggers, the memory rules and the limits. It opens in its own tab, so nothing you " \
+       "have typed here is lost while you read it."],
+      action: :view_scripts, community: @community,
+      reference: ["Read the scripting reference", url("/documentation")],
+      title: "About scripts"
+    ) %>
+
+<form method="post" action="<%= url("/communities/#{@community.slug}/scripts") %>">
+  <% if @script %><input type="hidden" name="id" value="<%= @script.id %>"><% end %>
+
+  <div class="card">
+    <h2>When it runs</h2>
+    <%= field(name: "name", label: "Name", type: :text, value: @script&.name, required: true,
+              hint: "What this rule is called on the list.") %>
+    <%# What INVOKES the script. The condition below narrows when that happens; %>
+    <%# this decides whether it happens on traffic at all. %>
+    <%= field(name: "kind", label: "Trigger", type: :select, value: @script&.kind, size: :full,
+              options: Rubotty::ControlPlane::Scripts::KINDS.map { |kind|
+                [kind, Rubotty::ControlPlane::Scripts::KIND_LABELS[kind]]
+              }) %>
+    <%= notice("A script does not watch the room. You pick your conditions from this list, rubotty works " \
+               "out whether one matches, and only then is your script run with what matched handed to it.",
+               tone: :info) %>
+    <%# Each trigger describes itself (its summary, the fields it reads and what %>
+    <%# it hands over), so this page cannot offer a box a trigger ignores. The %>
+    <%# behaviour reading it lives in assets/themes/runtime/script-triggers.civet. %>
+    <script type="application/json" id="trigger-help">
+      <%= Rubotty::Scripting::Triggers::TYPES.map { |type|
+            { "name" => type.type_name, "summary" => type.summary, "fields" => type.fields,
+              "hands" => type.hands_over }
+          }.to_json %>
+    </script>
+    <% config = @script ? deps.scripts.trigger_config(@script) : {} %>
+    <%# Read through declared rather than off the raw list, so a condition the %>
+    <%# API wrote as a table with its own settings still shows as ticked. %>
+    <% also = Rubotty::Scripting::Triggers.declared(@script&.trigger_type.to_s, config)
+                                          .drop(1).map(&:first) %>
+    <% trigger_options = Rubotty::Scripting::Triggers.type_names.map { |type| [type, type] } %>
+    <%# The rules in the order they are tried, as one sentence, so the set reads %>
+    <%# as a set. script-rules.civet redraws it as somebody edits the list. %>
+    <% rules = [@script&.trigger_type.to_s.empty? ? Rubotty::Scripting::Triggers.type_names.first : @script.trigger_type, *also].compact %>
+    <%= notice("Tried in order: #{rules.each_with_index.map { |name, at| "#{at + 1}. #{name}" }.join(", ")}. " \
+               "The first that matches wins, so this runs once per message however many it carries. " \
+               "#{rules.filter_map { |name| Rubotty::Scripting::Triggers::BY_NAME[name]&.summary }.join(" ")}",
+               tone: :info) %>
+    <%= field(name: "trigger_type", label: "Condition", type: :select,
+              value: @script&.trigger_type, options: trigger_options,
+              hint: Rubotty::Scripting::Triggers::BY_NAME[@script&.trigger_type.to_s]&.summary) %>
+    <%= field(name: "trigger_name", label: "Command name", type: :text, value: config["name"],
+              size: :short, hint: "Without the slash. Somebody types /roll or !roll.") %>
+    <%= field(name: "trigger_words", label: "Words, one per line", type: :multiline,
+              value: Array(config["words"]).join("\n"), size: :full,
+              hint: "Matched anywhere in a message, ignoring case.") %>
+    <%= field(name: "trigger_names", label: "Names, one per line", type: :multiline,
+              value: Array(config["names"]).join("\n"), size: :full,
+              hint: "The people to watch for, as they appear in the room.") %>
+    <%= field(name: "trigger_window", label: "Window", type: :text, value: config["window"],
+              size: :short, hint: "How many recent messages to look back over.") %>
+    <%= field(name: "trigger_minutes", label: "Minutes", type: :text, value: config["minutes"],
+              size: :short,
+              hint: "How far back to look in real time, which is the one to use for pace.") %>
+    <%= field(name: "trigger_count", label: "Count", type: :text, value: config["count"],
+              size: :short, hint: "How many of those have to match before your script runs.") %>
+    <%= field(name: "trigger_every", label: "How often", type: :select, value: config["every"],
+              size: :short,
+              options: Rubotty::Scripting::Triggers::Recurring::EVERY.each_key.map { |every| [every, "Every #{every}"] }) %>
+    <%= field(name: "trigger_at", label: "At", type: :text, value: config["at"], size: :short,
+              hint: "Time of day in UTC for a daily or weekly one. Blank starts the clock when you turn it on.") %>
+    <%# Folded shut: an ordinary script carries one condition, and a page that %>
+    <%# opens on four ticked boxes reads as though it wanted them. %>
+    <details class="rb-section rb-section--collapsible">
+      <summary class="rb-section-title">More conditions</summary>
+      <div class="rb-section-body">
+        <%= field(name: "trigger_also", label: "And also", type: :checklist, value: also,
+                  options: trigger_options,
+                  hint: "Leave these alone for an ordinary script. A script may carry " \
+                        "#{Rubotty::Scripting::Triggers::MAX} conditions, tried in order, and every one " \
+                        "you tick shares the boxes above.") %>
+        <%= field(name: "trigger_edits", label: "Also run when somebody edits a message", type: :toggle,
+                  value: %w[true 1 yes on t].include?(config["edits"].to_s) ? "true" : "false",
+                  hint: "With it on, an edit is offered to your conditions the same way a new message " \
+                        "is, and rubotty.kind() answers message_edit so you can tell them apart.") %>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div><h2>Code and data</h2></div>
+      <%# Code and Data are two documents for one script, so they are two panes %>
+      <%# rather than two pages: switching saves nothing, and both go up in the %>
+      <%# same POST whichever one is showing. type="button" because a bare %>
+      <%# button inside a form submits it. Hidden until the editor bundle %>
+      <%# reveals it, so a page without JavaScript shows both boxes one after %>
+      <%# the other instead of a toggle nothing listens to. %>
+      <div id="script-pane-toggle" class="button-group" hidden>
+        <button type="button" class="secondary" data-pane="code">Code</button>
+        <button type="button" class="secondary" data-pane="data">Data</button>
+      </div>
+    </div>
+    <%# Folded shut: starting from an example is one way in rather than the way %>
+    <%# in, and it replaces everything typed so far when it is picked. %>
+    <details class="rb-section rb-section--collapsible">
+      <summary class="rb-section-title">Start from an example</summary>
+      <div class="rb-section-body">
+        <%= notice("Every one of these ships with rubotty and is run in the test suite, so it works " \
+                   "before you touch it. Picking one replaces the body, the kind, the language and the " \
+                   "condition, and saves nothing.",
+                   tone: :info) %>
+        <div class="rb-field rb-field--full">
+          <label class="rb-field-label" for="example-picker">Example</label>
+          <select class="rb-field-control" id="example-picker">
+            <option value="">Choose an example&hellip;</option>
+          </select>
+        </div>
+      </div>
+    </details>
+    <%# Everything explaining how to write a script belongs inside the Code %>
+    <%# pane, so switching to Data does not leave a page of Lua advice above a %>
+    <%# box that takes YAML. %>
+    <div data-pane-body="code">
+      <p class="muted">
+        A command returns the reply to post, as a string. A processor returns a table saying what should
+        happen to the message:
+      </p>
+      <div class="worked-example">
+        <p class="note">Let it through, which is what most messages get:</p>
+        <pre data-code="lua">return { action = "allow" }</pre>
+        <p class="note">Stop it, and say why:</p>
+        <pre data-code="lua">return { action = "reject", reason = "no links from new accounts" }</pre>
+        <p class="note">Let it through with different words:</p>
+        <pre data-code="lua">return { action = "rewrite", text = "the tidied up message" }</pre>
+        <p class="note">Any of the three can say something back at the same time:</p>
+        <pre data-code="lua">return { action = "allow", reply = "welcome to the room" }</pre>
+      </div>
+      <p class="muted">
+        Everything rubotty offers lives under <code>rubotty.</code>, and typing that in the editor offers
+        the list. You do not need <code>pcall</code>: your whole script already runs inside one, and a
+        script that fails costs you that one run rather than the room.
+      </p>
+      <div>
+        <label>Language</label>
+        <%# Only dialects whose transpiler this deployment actually has. One that %>
+        <%# is missing is left out rather than offered and then failing on save. %>
+        <select name="language" id="script-language"
+                data-modes="<%= h(Rubotty::Scripting::Dialects.available.to_h { |d| [d.name, d.editor_mode] }.to_json) %>">
+          <% Rubotty::Scripting::Dialects.available.each do |dialect| %>
+            <option value="<%= h(dialect.name) %>"
+                    <%= @script&.language == dialect.name ? "selected" : "" %>><%= h(dialect.label) %></option>
+          <% end %>
+        </select>
+        <p class="note">Every dialect compiles to Lua before it runs, so the choice is only how you write it.</p>
+      </div>
+      <textarea name="source" rows="18" data-editor="lua" style="width:100%; font-family:monospace;"
+        ><%= h(@script&.source || "return { action = \"allow\" }\n") %></textarea>
+    </div>
+
+    <%# The data file (issue #352). Parsed when you save, so a broken document %>
+    <%# is refused here rather than on the first message it would have run on. %>
+    <div data-pane-body="data">
+      <p class="muted">
+        A YAML file that belongs to this script alone. Read it with
+        <code>rubotty.yaml_data()</code>, which hands back the parsed document, or <code>nil</code> when
+        there is none. Your script can read it and cannot write it: changing it is something a person
+        does here.
+      </p>
+      <p class="note">
+        This is where a long list of words, a set of replacements or a page of canned responses goes,
+        instead of into the middle of your logic. Editing it puts the script back to unchecked, the same
+        as editing the code, since a rule that decides from a list decides differently when the list
+        changes.
+      </p>
+      <p class="note">
+        It has to be a set of keys or a list, it is parsed when you save, and it is capped at
+        <%= Rubotty::ControlPlane::Scripts.size(Rubotty::ControlPlane::Scripts::MAX_YAML_BYTES) %>.
+      </p>
+      <textarea name="yaml_data" rows="18" data-editor="yaml" data-editor-mode="yaml"
+                style="width:100%; font-family:monospace;"
+                placeholder="words:&#10;  - airdrop&#10;  - free mint"><%= h(@script&.yaml_data) %></textarea>
+    </div>
+  </div>
+
+  <div class="card">
+    <%= form_footer(
+          validation: "Saving always works, even mid thought. It just leaves the script unchecked and off.",
+          actions: button("Back to scripts", action: :view_scripts, community: @community,
+                          variant: :secondary, to: url("/communities/#{@community.slug}/scripts")),
+          submit: button("Save", action: :manage_scripts, community: @community)
+        ) %>
+  </div>
+</form>
+
+<h2>Check and turn on</h2>
+
+<% if @script && @script.verification_notes.to_s != "" %>
+  <div class="card">
+    <h2>The last check found problems</h2>
+    <p class="note"><%= h(@script.verification_notes) %></p>
+  </div>
+<% end %>
+
+<% if @script %>
+  <div class="card">
+    <div class="row">
+      <div>
+        <%# Both states, together. Passing the check does not start a script, %>
+        <%# and a page showing only "checked" read as though it had. %>
+        <span class="pill <%= @live ? "on" : "off" %>"><%= @live ? "on" : "off" %></span>
+        <span class="pill <%= @verified ? "on" : "off" %>"><%= @verified ? "checked" : "not checked" %></span>
+        <% if @verified && @script.verified_at %>
+          <span class="muted">passed <%= h(@script.verified_at) %></span>
+        <% end %>
+      </div>
+      <div>
+        <% if @live %>
+          <form class="inline" method="post"
+                action="<%= url("/communities/#{@community.slug}/scripts/#{@script.id}/disable") %>">
+            <input type="hidden" name="back" value="script">
+            <%= act_button("Turn off", :manage_scripts, community: @community, style: "secondary") %>
+          </form>
+        <% else %>
+          <form class="inline" method="post"
+                action="<%= url("/communities/#{@community.slug}/scripts/#{@script.id}/enable") %>">
+            <input type="hidden" name="back" value="script">
+            <%= act_button("Turn on", :manage_scripts, community: @community, enabled: @verified) %>
+          </form>
+        <% end %>
+        <form class="inline" method="post"
+              action="<%= url("/communities/#{@community.slug}/scripts/#{@script.id}/verify") %>">
+          <%= act_button("Run the check", :manage_scripts, community: @community, style: "secondary") %>
+        </form>
+      </div>
+    </div>
+    <% if @script.disabled_at %>
+      <p class="note">Switched off automatically: <%= h(@script.disabled_reason) %></p>
+    <% end %>
+    <p class="note">
+      A new script starts off, and saving an edit puts it back to off, so it has to be turned on here or
+      from the list before it answers anybody. Turning it on needs a passing check first.
+    </p>
+    <p class="note">
+      The check runs this script against an empty message, one word, a very long one, punctuation, non
+      English text, and two inputs that are malformed Lua patterns. It reports crashes and answers of the
+      wrong shape. It is a smoke test rather than a proof: it cannot tell you the rule does what you meant,
+      only that it does not obviously fall over.
+    </p>
+  </div>
+
+  <%# What it has actually been doing, drawn from the failure counter, the %>
+  <%# error history and the alerts it raised, so those questions are answered %>
+  <%# here rather than on two other screens. %>
+  <%= script_activity(@script, alerts: @alerts, errors: @errors, run_totals: @run_totals) %>
+
+  <div class="card">
+    <h2>Try it</h2>
+    <%# Woken only when NOTHING it declares listens to traffic, so a script that %>
+    <%# carries a clock condition beside a command one is still tried with text. %>
+    <% woken = @script.kind == "callback" ||
+               Rubotty::Scripting::Triggers.declared(@script.trigger_type, deps.scripts.trigger_config(@script))
+                                           .all? { |type, _| type == "recurring" } %>
+    <p class="muted">
+      <% if woken %>
+        This one is never woken by somebody talking, so there is no message to try it with. Running it wakes
+        it the way a caller or the clock would. If it reads <code>rubotty.invocation_data()</code>, put that
+        here as YAML, such as <code>town: Lisbon</code>.
+      <% else %>
+        Type a message the way somebody in the room would, and see what your script does with it. One
+        message per line: a condition that counts several ("the third link in ten minutes") needs more
+        than one to fire, and the answer shown is for the last of them.
+      <% end %>
+      Nothing is posted anywhere: this runs the script on its own, so it is safe to use on a rule that is
+      still off.
+    </p>
+    <form method="post" action="<%= url("/communities/#{@community.slug}/scripts/#{@script.id}/try") %>">
+      <textarea name="try_text" rows="3" style="width:100%; font-family:monospace;"
+                placeholder="<%= woken ? "town: Lisbon" : (@script.kind == "command" ? "/roll 2d6" : "something somebody might say") %>"><%= h(@tried_text) %></textarea>
+      <%= form_footer(
+            validation: "Nothing is posted anywhere, so this is safe on a rule that is still off.",
+            submit: button("Run it", action: :manage_scripts, community: @community)
+          ) %>
+    </form>
+    <% unless @tried_text.nil? %>
+      <% if @tried_matched %>
+        <p class="note">The trigger matched, and the script answered:</p>
+        <pre><%= h(@tried_answer.inspect) %></pre>
+      <% else %>
+        <p class="note">
+          The condition did not match that message, so the script would not have run at all. That is a
+          question about the condition above rather than about your code.
+        </p>
+      <% end %>
+    <% end %>
+  </div>
+<% end %>
+
+<%# The editor reads its completion list from here rather than from anything
+    hardcoded in JavaScript, so what it offers is generated from the same
+    constants the sandbox is built from and cannot drift from what runs. %>
+<script type="application/json" id="script-completions"><%= @completions %></script>
+<script type="application/json" id="script-examples"><%= @examples %></script>
+<script src="<%= request.script_name %>/script-editor.js"></script>

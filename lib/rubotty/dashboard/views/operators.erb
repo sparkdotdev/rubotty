@@ -1,0 +1,316 @@
+<h1><%= h(@community.name) %>: operators</h1>
+
+<%# Deployment-wide: each grant here applies in every community, so it is shown
+    only to a reader whose sight is the whole deployment. An operator of this
+    community reads the rest of the page without it. %>
+<% if deployment_wide_reader? %>
+<div class="card">
+  <h2>What operators may change</h2>
+  <p class="muted">
+    An operator reads everything in a community they run and changes nothing until you tick something
+    here. Each grant applies to every community, and only ever within the ones that operator was given.
+  </p>
+  <p class="muted">
+    Turning a feature on and editing what it does are separate on purpose. Somebody who can switch the
+    word filter off for a noisy room is doing a small thing; somebody who can rewrite which words it
+    catches can leave it reading as on while it catches nothing.
+  </p>
+  <form method="post" action="<%= request.script_name %>/operator-permissions">
+    <input type="hidden" name="back" value="/communities/<%= h(@community.slug) %>/operators">
+    <% @permission_groups.each do |group, rows| %>
+      <h3><%= h(group) %></h3>
+      <table>
+        <thead><tr><th>Grant</th><th>Operators may</th></tr></thead>
+        <tbody>
+          <% rows.each do |row| %>
+            <tr>
+              <td><%= h(row[:label]) %> <span class="muted"><code><%= h(row[:action]) %></code></span></td>
+              <td>
+                <label>
+                  <input type="checkbox" name="permissions[<%= h(row[:action]) %>]" value="1"<%= row[:operator_writable] ? " checked" : "" %>>
+                  allowed
+                </label>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% end %>
+    <p><%= act_button("Save permissions", :manage_action_permissions, community: @community) %></p>
+  </form>
+</div>
+<% end %>
+
+<div class="card">
+  <h2>Pending requests</h2>
+  <% if @pending.empty? %>
+    <p class="muted">No pending operator requests.</p>
+  <% elsif @approver.nil? %>
+    <p class="muted">
+      This community has no operator yet, so requests cannot be decided from here.
+      An operator must be seeded or claimed first.
+    </p>
+  <% else %>
+    <table>
+      <thead>
+        <tr><th>Requester</th><th>Platform</th><th>Requested</th><th>Decide</th></tr>
+      </thead>
+      <tbody>
+        <% @pending.each do |req| %>
+          <tr>
+            <td>
+              <%= h(req.requester_display || req.requester_username || req.requester_native_id) %>
+              <% unless req.requester_username.to_s.empty? %>
+                <span class="muted">@<%= h(req.requester_username) %></span>
+              <% end %>
+              <div class="muted"><code><%= h(req.requester_native_id) %></code></div>
+            </td>
+            <td><%= h(req.adapter) %></td>
+            <td class="muted"><%= h(req.requested_at) %></td>
+            <td>
+              <form class="inline" method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/operators/<%= req.id %>/approve">
+                <%= act_button("Approve", :manage_operator_requests, community: @community) %>
+              </form>
+              <form class="inline" method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/operators/<%= req.id %>/deny">
+                <%= act_button("Deny", :manage_operator_requests, community: @community, style: "secondary") %>
+              </form>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+</div>
+
+<div class="card">
+  <h2>Viewers of this community</h2>
+  <p class="muted">
+    A <strong>viewer</strong> of <%= h(@community.slug) %> reads it and changes nothing in it. Save
+    buttons render disabled for them and the server refuses the write regardless. An operator of this
+    community can hand it out, because it reads no further than an operator here already reads.
+  </p>
+  <p class="muted">
+    Reading <em>every</em> community is a separate, deployment-wide role on the Viewers page, and only
+    an administrator hands that one out. Handles named in the configuration this deployment ships with
+    read every community already, which is the floor under both, and nothing here can take that away.
+  </p>
+
+  <% unless @community_viewer_requests.empty? %>
+    <h3>Pending requests</h3>
+    <table>
+      <thead><tr><th>Requester</th><th>Platform</th><th>Requested</th><th>Decide</th></tr></thead>
+      <tbody>
+        <% @community_viewer_requests.each do |req| %>
+          <tr>
+            <td>
+              <%= h(req[:requester_display] || req[:requester_username] || req[:requester_native_id]) %>
+              <% unless req[:requester_username].to_s.empty? %>
+                <span class="muted">@<%= h(req[:requester_username]) %></span>
+              <% end %>
+              <div class="muted"><code><%= h(req[:requester_native_id]) %></code></div>
+            </td>
+            <td><%= h(req[:adapter]) %></td>
+            <td class="muted"><%= h(req[:requested_at]) %></td>
+            <td>
+              <form class="inline" method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/viewer-requests/<%= req[:id] %>/approve">
+                <%= act_button("Approve", :manage_community_viewers, community: @community) %>
+              </form>
+              <form class="inline" method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/viewer-requests/<%= req[:id] %>/deny">
+                <%= act_button("Deny", :manage_community_viewers, community: @community, style: "secondary") %>
+              </form>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+
+  <h3>Who reads this community</h3>
+  <% if @community_viewers.empty? && @baked_in_viewers.empty? %>
+    <p class="muted">Nobody reads <%= h(@community.slug) %> without operating it.</p>
+  <% else %>
+    <table>
+      <thead><tr><th>Handle</th><th>Platform</th><th>Granted</th><th>By</th><th></th></tr></thead>
+      <tbody>
+        <% @baked_in_viewers.each do |entry| %>
+          <tr>
+            <td>
+              <code><%= h(entry[:handle]) %></code>
+              <span class="pill protected">deployment-configured</span>
+            </td>
+            <td><%= baked_in_kind_label(entry[:kind]) %></td>
+            <td class="muted">ships with the deployment</td>
+            <td class="muted">n/a</td>
+            <td class="muted">reads every community, cannot be removed</td>
+          </tr>
+        <% end %>
+        <% @community_viewers.each do |row| %>
+          <tr>
+            <td>
+              <code><%= h(row[:handle]) %></code>
+              <% unless row[:label].to_s.empty? %>
+                <div class="muted"><%= h(row[:label]) %></div>
+              <% end %>
+            </td>
+            <td><%= h(row[:adapter]) %></td>
+            <td class="muted"><%= h(row[:granted_at]) %></td>
+            <td class="muted"><%= h(row[:granted_by]) %></td>
+            <td>
+              <form class="inline" method="post"
+                    action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/viewers/<%= row[:id] %>/revoke">
+                <%= act_button("Revoke", :manage_community_viewers, community: @community, style: "danger") %>
+              </form>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+
+  <h3>Let somebody read this community</h3>
+  <p class="muted">
+    Named by the platform handle a person owns, never by their display name, which anyone can set to
+    anything. On Matrix that means the full ID (<code>@someone:example.org</code>); everywhere else the
+    bare username.
+  </p>
+  <form method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/viewers">
+    <p>
+      <label>Platform
+        <select name="adapter">
+          <% @viewer_adapters.each do |adapter| %>
+            <option value="<%= h(adapter) %>"><%= h(adapter) %></option>
+          <% end %>
+        </select>
+      </label>
+    </p>
+    <p><label>Handle <input type="text" name="handle" placeholder="someone" required></label></p>
+    <p><label>Name (optional) <input type="text" name="label" placeholder="Ada Lovelace"></label></p>
+    <p><%= act_button("Grant", :manage_community_viewers, community: @community) %></p>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Hand a role over with a token</h2>
+  <p class="muted">
+    For somebody whose handle you do not have yet. Mint a token, give it to them however you like, and
+    they send the bot <code>/auth</code> and the token in a private message. That grants them what the
+    token says and sends them their first sign-in link in the same reply.
+  </p>
+  <p class="muted">
+    The decision is made here, when the token is minted, so redeeming it asks nobody anything. It works
+    once, it expires whether or not anybody uses it, and it can be taken back until it is used. Nobody
+    can mint a token bigger than the role they hold themselves.
+  </p>
+
+  <% if @issued_auth_token %>
+    <p><strong>Here is the token. It is shown once and cannot be shown again.</strong></p>
+    <p><code><%= h(@issued_auth_token) %></code></p>
+    <p class="muted">
+      Anybody who has this takes the role it carries, so send it over something private and do not
+      keep a copy. If it goes astray, revoke it below and mint another.
+    </p>
+  <% end %>
+
+  <h3>Tokens for this community</h3>
+  <% if @auth_tokens.empty? %>
+    <p class="muted">No tokens have been minted for <%= h(@community.slug) %>.</p>
+  <% else %>
+    <table>
+      <thead>
+        <tr><th>For</th><th>Grants</th><th>State</th><th>Expires</th><th>Minted by</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% @auth_tokens.each do |row| %>
+          <tr>
+            <td>
+              <% if row[:label].to_s.empty? %>
+                <span class="muted">unlabelled</span>
+              <% else %>
+                <%= h(row[:label]) %>
+              <% end %>
+              <% unless row[:redeemed_at].nil? %>
+                <div class="muted">used by <%= h(row[:redeemed_username] || row[:redeemed_native_id]) %></div>
+              <% end %>
+            </td>
+            <td><%= h(deps.auth_tokens.grant_words(row)) %></td>
+            <td><%= h(deps.auth_tokens.state_of(row)) %></td>
+            <td class="muted"><%= h(row[:expires_at]) %></td>
+            <td class="muted"><%= h(row[:created_by]) %></td>
+            <td>
+              <% if deps.auth_tokens.live?(row) %>
+                <form class="inline" method="post"
+                      action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/auth-tokens/<%= h(row[:public_id]) %>/revoke">
+                  <%= act_button("Revoke", :manage_community_viewers, community: @community, style: "danger") %>
+                </form>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+
+  <h3>Mint a token</h3>
+  <form method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/auth-tokens">
+    <p><label><input type="checkbox" name="operator" value="1"> Operator of <%= h(@community.slug) %>, who changes things here</label></p>
+    <p><label><input type="checkbox" name="viewer" value="1"> Viewer of <%= h(@community.slug) %>, who reads it and changes nothing</label></p>
+    <p><label>Good for (hours) <input type="number" name="ttl_hours" value="24" min="1" max="336" step="1"></label></p>
+    <p><label>Who it is for (optional) <input type="text" name="label" placeholder="Ada, the new moderator"></label></p>
+    <p><%= act_button("Mint", :manage_community_viewers, community: @community) %></p>
+  </form>
+</div>
+
+<%# The audience an alert really has, which the operator list alone overstates:
+    a bot cannot open a private chat first, so an operator who has only ever
+    spoken to it in a group hears nothing at all. %>
+<%= unreachable_operators_section(@unreachable_operators) %>
+
+<div class="card">
+  <h2>Operators</h2>
+  <% if @operators.empty? && @baked_in_operators.empty? %>
+    <p class="muted">No operators for this community.</p>
+  <% else %>
+    <p class="muted">
+      The rows marked <span class="pill protected">deployment-configured</span> are the always-operators fail-safe
+      (issue #119): a code-owned handle that is always an owner-level operator here and in every other
+      community, so operator access can never be lost through the database or this dashboard. They cannot
+      be removed from here, or at all.
+    </p>
+    <table>
+      <thead>
+        <tr><th>Person</th><th>Actions</th><th>Scope</th><th>Granted</th><th>By</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% @baked_in_operators.each do |entry| %>
+          <tr>
+            <td>
+              <code><%= h(entry[:handle]) %></code>
+              <span class="pill protected">deployment-configured</span>
+              <div class="muted"><%= baked_in_kind_label(entry[:kind]) %></div>
+            </td>
+            <td><code>all</code></td>
+            <td><code>all</code></td>
+            <td class="muted">code-owned (issue #119)</td>
+            <td class="muted">n/a</td>
+            <td class="muted">protected, cannot be removed</td>
+          </tr>
+        <% end %>
+        <% @operators.each do |entry| %>
+          <tr>
+            <td><%= h(entry[:person]&.name || "person ##{entry[:row].person_id}") %></td>
+            <td><code><%= h(entry[:row].actions) %></code></td>
+            <td><code><%= h(entry[:row].scope) %></code></td>
+            <td class="muted"><%= h(entry[:row].granted_at) %></td>
+            <td class="muted"><%= h(entry[:row].granted_by) %></td>
+            <td>
+              <form class="inline" method="post"
+                    action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/operators/<%= entry[:row].id %>/delete">
+                <%= act_button("Delete", :manage_operators, community: @community, style: "danger") %>
+              </form>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+</div>

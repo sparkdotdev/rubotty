@@ -1,0 +1,100 @@
+// The script editor's condition behaviour: show only the boxes the chosen
+// conditions actually read, and say in plain words what they do and what the
+// script is handed. Everything here comes off the trigger classes themselves,
+// arriving on the wire as data.triggers, so the page cannot offer a box a
+// trigger ignores or describe behaviour the code does not have.
+//
+// This replaces the inline script the ERB editor carried, which shipped the
+// same table again as JSON inside a script tag and read it back out with its
+// own copy of this logic.
+
+// Where each field a trigger declares is on the page: the name a trigger reads
+// mapped to the control the Field primitive drew for it. Every id here is what
+// Field's own fieldId() produces, so nothing has to be marked up specially to
+// be found.
+FIELD_CONTROLS := {
+  name: "trigger_name"
+  window: "trigger_window"
+  minutes: "trigger_minutes"
+  count: "trigger_count"
+  words: "trigger_words"
+  names: "trigger_names"
+  every: "trigger_every"
+  at: "trigger_at"
+}
+
+function byName(catalogue: any[]): any
+  found := {}
+  for entry of catalogue ?? []
+    found[entry.name] = entry
+  found
+
+// Every condition the script carries, the primary plus whatever extras are
+// ticked. A script carrying two would otherwise be shown one condition's boxes
+// and quietly miss the other's settings.
+function chosenTriggers(root: any, catalogue: any[]): any[]
+  table := byName catalogue
+  picker := root?.querySelector?("#rb-field-trigger_type")
+  primary := table[picker?.value] ?? { summary: "", fields: [], hands: [] }
+  picked .= [primary]
+  extras := root?.querySelectorAll?('input[name="trigger_also[]"]') ?? []
+  for extra of Array.from(extras)
+    box := extra as any
+    entry := table[box.value]
+    picked.push entry if box.checked and entry and box.value !== picker?.value
+  picked
+
+function union(picked: any[], key: string): string[]
+  seen .= []
+  for one of picked
+    for item of one[key] ?? []
+      seen.push item unless seen.includes item
+  seen
+
+// What the chosen conditions add up to, as one sentence a reader can act on.
+function triggerSummary(picked: any[]): string
+  said := picked.map((one: any) => one.summary ?? "").filter((line: string) => line !== "").join " "
+  handed := union picked, "hands"
+  return said unless handed.length > 0
+
+  calls := handed.map((name: string) => `rubotty.${name}()`).join ", "
+  `${said} Your script can read: ${calls}`.trim()
+
+// The trigger table, from the themed payload where there is one and from the
+// server-rendered page's own copy of it otherwise. The two are the same list:
+// ViewData#trigger_catalogue and the editor's trigger-help block are both read
+// off Scripting::Triggers::TYPES.
+function catalogueFor(root: any, data: any): any[]
+  return data.triggers if data?.section is "script_edit" and Array.isArray data?.triggers
+
+  block := root.querySelector? "#trigger-help"
+  return [] unless block
+  try
+    parsed := JSON.parse block.textContent
+    Array.isArray(parsed) ? parsed : []
+  catch
+    []
+
+// Draw the condition step for whatever is chosen right now. Called after every
+// themed draw and again on every change inside the editor, the same way charts
+// are painted after a draw rather than during one.
+function applyScriptTriggers(root: any, data: any): void
+  return unless root
+  picker := root.querySelector? "#rb-field-trigger_type"
+  return unless picker
+
+  catalogue := catalogueFor root, data
+  return unless catalogue.length > 0
+
+  picked := chosenTriggers root, catalogue
+  wanted := union picked, "fields"
+
+  hint := picker.closest?(".rb-field")?.querySelector?(".rb-field-hint")
+  hint.textContent = triggerSummary(picked) if hint
+
+  for field of Object.keys FIELD_CONTROLS
+    box := root.querySelector? `#rb-field-${FIELD_CONTROLS[field]}`
+    wrapper := box?.closest? ".rb-field"
+    wrapper.hidden = not wanted.includes(field) if wrapper
+
+export { FIELD_CONTROLS, chosenTriggers, triggerSummary, applyScriptTriggers }

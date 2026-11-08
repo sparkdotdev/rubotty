@@ -1,0 +1,135 @@
+<h1><%= h(@community.name) %>: FAQ / custom commands</h1>
+<%= no_rooms_notice(@community) %>
+
+<div class="card">
+  <p class="muted">
+    An FAQ entry maps a trigger to a canned response. A <strong>command</strong> trigger fires on
+    <code>/name</code> or <code>!name</code> and is swallowed; a <strong>keyword</strong> trigger posts the
+    answer alongside a matching message. A per-room set (applying to every channel bridged into that room)
+    overrides the community-wide <code>all</code> set.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Every scope</h2>
+  <p class="muted">
+    <code>all</code> is the community-wide default; every room below either sets its own state or follows it.
+    What each row shows is what the bot actually applies there, so a room that has never been touched still
+    reads its real state. <strong>Follows all</strong> drops a room's own setting and puts it back on the
+    default. Entries are edited per scope in the cards below.
+  </p>
+  <table>
+    <thead><tr><th>Scope</th><th>Status</th><th>Entries</th><th></th></tr></thead>
+    <tbody>
+      <% @matrix.each do |entry| %>
+        <tr>
+          <td>
+            <code><%= h(entry[:label]) %></code>
+            <% unless entry[:community] || entry[:configured] %>
+              <div class="muted">follows <code>all</code></div>
+            <% end %>
+          </td>
+          <td><span class="pill <%= entry[:enabled] ? "on" : "off" %>"><%= entry[:enabled] ? "on" : "off" %></span></td>
+          <td><%= entry[:config]["entries"].is_a?(Array) ? entry[:config]["entries"].length : 0 %></td>
+          <td>
+            <form class="inline" method="post"
+                  action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/faq">
+              <input type="hidden" name="op" value="scope">
+              <input type="hidden" name="selector" value="<%= h(entry[:key]) %>">
+              <select name="enabled">
+                <option value="on" <%= entry[:enabled] ? "selected" : "" %>>on</option>
+                <option value="off" <%= entry[:enabled] ? "" : "selected" %>>off</option>
+                <% unless entry[:community] %>
+                  <option value="inherit">follows all</option>
+                <% end %>
+              </select>
+              <%= act_button("Save", :configure_faq, community: @community, style: "secondary") %>
+            </form>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+
+<% @settings.each do |setting| %>
+  <% scope = setting[:scope] == :community ? "all" : setting[:room_key] %>
+  <% entries = setting[:config]["entries"].is_a?(Array) ? setting[:config]["entries"] : [] %>
+  <div class="card">
+    <h2>
+      Scope <code><%= h(scope) %></code>
+      <span class="pill <%= setting[:enabled] ? "on" : "off" %>"><%= setting[:enabled] ? "on" : "off" %></span>
+    </h2>
+    <form class="inline" method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/faq">
+      <input type="hidden" name="selector" value="<%= h(scope) %>">
+      <% if setting[:enabled] %>
+        <%= act_button("Disable here", :toggle_faq, community: @community, style: "secondary", name: "op", value: "disable") %>
+      <% else %>
+        <%= act_button("Enable here", :toggle_faq, community: @community, name: "op", value: "enable") %>
+      <% end %>
+    </form>
+    <% if entries.empty? %>
+      <p class="muted">No entries.</p>
+    <% else %>
+      <table style="margin-top:0.7rem;">
+        <thead><tr><th>Trigger</th><th>Response</th><th></th></tr></thead>
+        <tbody>
+          <% entries.each do |entry| %>
+            <tr>
+              <td><%= h(faq_trigger(entry)) %></td>
+              <td><%= h(entry["response"] || entry[:response]) %></td>
+              <td>
+                <form class="inline" method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/faq">
+                  <input type="hidden" name="selector" value="<%= h(scope) %>">
+                  <input type="hidden" name="id" value="<%= h(entry["id"]) %>">
+                  <%= act_button("Remove", :configure_faq, community: @community, style: "danger", name: "op", value: "remove") %>
+                </form>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% end %>
+  </div>
+<% end %>
+
+<div class="card">
+  <h2>Add an entry</h2>
+  <p class="note">
+    A room picked here that has never been configured before inherits <code>all</code>'s current on/off
+    state, so adding its first entry never silently turns the FAQ off for that room. Change that state from
+    the table above.
+  </p>
+  <form method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/faq">
+    <div class="row">
+      <div>
+        <label>Scope</label>
+        <select name="selector">
+          <% @scopes.each do |scope| %><option value="<%= h(scope[:value]) %>"><%= h(scope[:label]) %></option><% end %>
+        </select>
+      </div>
+      <div>
+        <label>Trigger type</label>
+        <select name="trigger_type">
+          <option value="command">command</option>
+          <option value="keyword">keyword</option>
+        </select>
+      </div>
+      <div>
+        <label>Trigger</label>
+        <input type="text" name="trigger" placeholder="rules">
+      </div>
+    </div>
+    <div class="row">
+      <div style="flex:1; min-width:260px;">
+        <label>Response</label>
+        <input type="text" name="response" style="width:100%;" placeholder="Be kind and read the pinned message.">
+      </div>
+      <div style="align-self:flex-end;">
+        <%= act_button("Add entry", :configure_faq, community: @community, name: "op", value: "add") %>
+      </div>
+    </div>
+  </form>
+</div>
+
+<%= erb :_leftover_config, layout: false %>

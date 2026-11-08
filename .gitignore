@@ -1,0 +1,57 @@
+# Secrets: never commit these
+.env
+.env.*
+!.env.example
+*.secret
+*.secret.yaml
+secrets.yaml
+settings.yaml
+
+# Runtime state
+data/
+*.sqlite
+*.sqlite3
+*.db
+
+# Ruby
+/.bundle/
+/vendor/bundle/
+/pkg/
+/tmp/
+/coverage/
+*.gem
+.rspec_status
+.byebug_history
+
+# Dependencies / build
+dist/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editors
+/.idea/
+/.vscode/
+*.swp
+
+# Local tooling (worktrees, session state)
+/.[c]laude/
+
+# OS
+.DS_Store
+
+# Dashboard assets, built at deploy time (npm run build). Sources live in
+# assets/; these are outputs and are never committed, so nobody has to remember
+# to rebuild them in a commit. The .css half is the compiled swatches.
+lib/rubotty/dashboard/public/*.js
+lib/rubotty/dashboard/public/*.css
+lib/rubotty/dashboard/public/fonts/
+
+# The resolved version, baked in at deploy time by scripts/resolve-version.sh.
+# Never committed, so no PR ever bumps it and the tag stays the one source of truth.
+lib/rubotty/resolved_version.txt
+/.agents/
+.ci-dependencies/
+
+node_modules/

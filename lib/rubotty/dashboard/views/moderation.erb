@@ -1,0 +1,110 @@
+<h1><%= h(@community.name) %>: moderation</h1>
+
+<div class="card muted">
+  Mute and unmute a user on their own platform. This writes the same sanction record the warnings ladder
+  applies automatically, so a mute issued here shows up in <code>/warnings</code> and lifts itself on schedule
+  the same way. Leave the duration blank for an indefinite mute; unmute it here whenever it should end early.
+</div>
+
+<div class="card">
+  <h2>Find a user</h2>
+  <form method="get" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/moderation">
+    <div class="row">
+      <div>
+        <label>Handle or display name</label>
+        <input type="text" name="q" value="<%= h(@query) %>" placeholder="ada">
+      </div>
+      <div><button type="submit">Search</button></div>
+    </div>
+  </form>
+
+  <% if @query %>
+    <% if @identities.empty? %>
+      <p class="muted">No one seen talking here matches <code><%= h(@query) %></code>. Use the manual form below.</p>
+    <% else %>
+      <table>
+        <thead><tr><th>Platform</th><th>Handle</th><th>Display name</th><th>Mute</th></tr></thead>
+        <tbody>
+          <% @identities.each do |identity| %>
+            <tr>
+              <td><code><%= h(identity.adapter) %></code></td>
+              <td><%= identity.username.to_s.empty? ? "" : "@#{h(identity.username)}" %></td>
+              <td><%= h(identity.display_name) %></td>
+              <td>
+                <form class="inline" method="post"
+                      action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/moderation/mute">
+                  <input type="hidden" name="adapter" value="<%= h(identity.adapter) %>">
+                  <input type="hidden" name="native_id" value="<%= h(identity.native_id) %>">
+                  <input type="hidden" name="username" value="<%= h(identity.username) %>">
+                  <input type="hidden" name="display" value="<%= h(identity.display_name) %>">
+                  <input type="text" name="duration" placeholder="1h" style="width:4rem;">
+                  <input type="text" name="reason" placeholder="reason" style="width:8rem;">
+                  <%= act_button("Mute", :moderate_user, community: @community) %>
+                </form>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% end %>
+  <% end %>
+</div>
+
+<div class="card">
+  <h2>Mute by platform and user id</h2>
+  <p class="muted">For a user not yet seen in this community, or when you already know their platform id.</p>
+  <form method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/moderation/mute">
+    <div class="row">
+      <div>
+        <label>Platform</label>
+        <input type="text" name="adapter" placeholder="telegram" style="width:8rem;">
+      </div>
+      <div>
+        <label>User id</label>
+        <input type="text" name="native_id" placeholder="123456789">
+      </div>
+      <div>
+        <label>Handle (optional)</label>
+        <input type="text" name="username" placeholder="ada">
+      </div>
+      <div>
+        <label>Duration (optional)</label>
+        <input type="text" name="duration" placeholder="1h, 30m, 1d" style="width:8rem;">
+      </div>
+      <div>
+        <label>Reason (optional)</label>
+        <input type="text" name="reason" placeholder="spam">
+      </div>
+      <div><%= act_button("Mute", :moderate_user, community: @community) %></div>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Currently muted</h2>
+  <% if @active_mutes.empty? %>
+    <p class="muted">No active mutes in this community.</p>
+  <% else %>
+    <table>
+      <thead><tr><th>Platform</th><th>Subject</th><th>Until</th><th></th></tr></thead>
+      <tbody>
+        <% @active_mutes.each do |sanction| %>
+          <tr>
+            <td><code><%= h(sanction.adapter) %></code></td>
+            <td>
+              <%= sanction.subject_username.to_s.empty? ? "" : "@#{h(sanction.subject_username)}" %>
+              <div class="muted"><code><%= h(sanction.subject_native_id) %></code></div>
+            </td>
+            <td class="muted"><%= sanction.until_at ? h(sanction.until_at) : "permanent" %></td>
+            <td>
+              <form class="inline" method="post"
+                    action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/moderation/<%= sanction.id %>/unmute">
+                <%= act_button("Unmute", :moderate_user, community: @community, style: "secondary") %>
+              </form>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+</div>

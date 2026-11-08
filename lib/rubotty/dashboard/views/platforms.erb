@@ -1,0 +1,582 @@
+<h1><%= h(@community.name) %>: platforms</h1>
+
+<div class="card">
+  <p class="muted">
+    The invite links the <code>/platforms</code> command advertises, so a member on one end can hop to
+    another. Each entry is a platform, a label and a join URL; a row with no URL is dropped. A per-room set
+    (applying to every channel bridged into that room) overrides the community-wide <code>all</code> default.
+  </p>
+</div>
+
+<% @platform_settings.each do |setting| %>
+  <% scope = setting[:scope] == :community ? "all" : setting[:room_key] %>
+  <% entries = setting[:config]["platforms"].is_a?(Array) ? setting[:config]["platforms"] : [] %>
+  <div class="card">
+    <h2>
+      Scope <code><%= h(scope) %></code>
+      <span class="pill <%= setting[:enabled] ? "on" : "off" %>"><%= setting[:enabled] ? "on" : "off" %></span>
+    </h2>
+    <form method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/platforms">
+      <input type="hidden" name="selector" value="<%= h(scope) %>">
+      <table style="margin-top:0.7rem;">
+        <thead><tr><th>Platform</th><th>Label</th><th>Join URL</th></tr></thead>
+        <tbody>
+          <% (entries + [{}]).each do |entry| %>
+            <% entry_platform = entry["platform"] || entry[:platform] %>
+            <tr>
+              <td>
+                <select name="platform[]" style="width:100%;">
+                  <option value=""></option>
+                  <% @known_adapters.each do |name| %>
+                    <option value="<%= h(name) %>"<%= " selected" if entry_platform == name %>><%= h(name) %></option>
+                  <% end %>
+                </select>
+              </td>
+              <td><input type="text" name="label[]" style="width:100%;" placeholder="Our Discord"
+                         value="<%= h(entry["label"] || entry[:label]) %>"></td>
+              <td><input type="text" name="url[]" style="width:100%;" placeholder="https://discord.gg/abc"
+                         value="<%= h(redact_secret(entry["url"] || entry[:url])) %>"></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+      <p class="muted" style="margin:0.4rem 0;">Clear a row's URL to drop it; the blank row adds a platform.</p>
+      <%= form_footer(
+            validation: "Clear a row's URL to drop it. Nothing here changes until you save.",
+            submit: button("Save links", action: :manage_platforms, community: @community)
+          ) %>
+    </form>
+  </div>
+<% end %>
+
+<div class="card">
+  <h2>Add links for a scope</h2>
+  <form method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/platforms">
+    <div class="row">
+      <div>
+        <label>Scope</label>
+        <select name="selector">
+          <% @scopes.each do |scope| %><option value="<%= h(scope[:value]) %>"><%= h(scope[:label]) %></option><% end %>
+        </select>
+      </div>
+    </div>
+    <table style="margin-top:0.4rem;">
+      <thead><tr><th>Platform</th><th>Label</th><th>Join URL</th></tr></thead>
+      <tbody>
+        <% 3.times do %>
+          <tr>
+            <td>
+              <select name="platform[]" style="width:100%;">
+                <option value=""></option>
+                <% @known_adapters.each do |name| %>
+                  <option value="<%= h(name) %>"><%= h(name) %></option>
+                <% end %>
+              </select>
+            </td>
+            <td><input type="text" name="label[]" style="width:100%;" placeholder="Our Discord"></td>
+            <td><input type="text" name="url[]" style="width:100%;" placeholder="https://discord.gg/abc"></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+    <%= form_footer(
+          validation: "A row with no URL is dropped, so a blank row adds nothing.",
+          submit: button("Save links", action: :manage_platforms, community: @community)
+        ) %>
+  </form>
+</div>
+
+<h2>Connected platforms</h2>
+<p class="muted">
+  The platform connections this community is wired to (admin only): which adapter and
+  credentialed account serve it, whether its token is present, and the per-account
+  behaviour settings that adapter exposes.
+</p>
+
+<div class="card">
+  <h3>Add a platform connection</h3>
+  <p class="muted">
+    Onboards a platform this community doesn't have yet, for example an account that came
+    online dormant with no endpoints declared. Its channels don't show up anywhere until the
+    adapter's next connect runs its channel sync; map them from
+    <a href="<%= request.script_name %>/communities/<%= h(@community.slug) %>/rooms?state=unroomed">Rooms</a>
+    once they do.
+  </p>
+  <form method="post"
+        action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/platforms/connections">
+    <div class="row">
+      <div>
+        <label>Adapter</label>
+        <select name="adapter">
+          <% @known_adapters.each do |name| %>
+            <option value="<%= h(name) %>"><%= h(name) %></option>
+          <% end %>
+        </select>
+      </div>
+      <div>
+        <label>Account</label>
+        <input type="text" name="account" placeholder="discord">
+      </div>
+      <div>
+        <label>External id</label>
+        <input type="text" name="external_id" placeholder="the guild/server/chat id">
+      </div>
+      <div>
+        <label>Label</label>
+        <input type="text" name="label" placeholder="optional">
+      </div>
+    </div>
+    <%= form_footer(
+          validation: "Adapter and account name the credentials this connection runs on, so both are required.",
+          submit: button("Add connection", action: :manage_platforms, community: @community)
+        ) %>
+  </form>
+</div>
+
+<% if @connection_views.empty? %>
+  <div class="card muted">No platform connections for this community.</div>
+<% end %>
+
+<% @connection_views.each do |view| %>
+  <% connection = view[:connection] %>
+  <div class="card">
+    <h2><%= h(connection.adapter) %> <span class="muted">/ account <%= h(connection.account) %></span></h2>
+    <p class="muted">
+      Space id <code><%= h(connection.external_id) %></code>
+      <% unless connection.label.to_s.empty? %> &middot; <%= h(connection.label) %><% end %>
+    </p>
+
+    <p>
+      Token env
+      <% if view[:token_env] %>
+        <code><%= h(view[:token_env]) %></code>
+        <span class="pill <%= view[:token_set] ? "on" : "off" %>">
+          <%= view[:token_set] ? "key present" : "dormant (waiting for key)" %>
+        </span>
+      <% else %>
+        <span class="muted">
+          no account named <code><%= h(connection.account) %></code> configured for <%= h(connection.adapter) %>
+        </span>
+      <% end %>
+    </p>
+
+    <% if view[:fetch_ceiling] %>
+      <p class="muted">
+        Fetch ceiling <code><%= h(human_bytes(view[:fetch_ceiling])) %></code>:
+        the largest file a bot on this connection can download back off <%= h(connection.adapter) %>
+        to rehost. See PRIVACY.md, "The size cap, the quota, and what rubotty can fetch at all".
+      </p>
+    <% end %>
+
+    <details>
+      <summary>Edit connection</summary>
+      <form method="post"
+            action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/platforms/<%= connection.id %>">
+        <div class="row">
+          <div>
+            <label>Adapter</label>
+            <select name="adapter">
+              <% @known_adapters.each do |name| %>
+                <option value="<%= h(name) %>"<%= " selected" if connection.adapter == name %>><%= h(name) %></option>
+              <% end %>
+            </select>
+          </div>
+          <div>
+            <label>Account</label>
+            <input type="text" name="account" value="<%= h(connection.account) %>">
+          </div>
+          <div>
+            <label>External id</label>
+            <input type="text" name="external_id" value="<%= h(connection.external_id) %>">
+          </div>
+          <div>
+            <label>Label</label>
+            <input type="text" name="label" value="<%= h(connection.label) %>">
+          </div>
+        </div>
+        <%= form_footer(
+              validation: "Changing the adapter or account repoints this connection at other credentials.",
+              submit: button("Save connection", action: :manage_platforms, community: @community)
+            ) %>
+      </form>
+    </details>
+
+    <% if view[:account].nil? %>
+      <p class="muted">Behaviour settings need an account configured for this adapter first.</p>
+    <% elsif view[:behavior].empty? %>
+      <p class="muted"><%= h(connection.adapter) %> has no editable behaviour settings yet.</p>
+    <% else %>
+      <h3>Behaviour settings</h3>
+      <form method="post"
+            action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/platforms/<%= connection.id %>/settings">
+        <table style="margin-top:0.4rem;">
+          <thead><tr><th>Setting</th><th>Value</th><th>Description</th></tr></thead>
+          <tbody>
+            <% view[:behavior].each do |setting| %>
+              <tr>
+                <td><code><%= h(setting[:name]) %></code></td>
+                <td><%= behavior_control(setting) %></td>
+                <td class="muted"><%= h(setting[:field]&.description) %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+        <%= form_footer(
+              validation: "These apply to every room this account serves, not to one room.",
+              submit: button("Save behaviour settings", action: :manage_platforms, community: @community)
+            ) %>
+      </form>
+    <% end %>
+
+    <% channels = @channels_by_connection[connection.id] || [] %>
+    <% if channels.empty? %>
+      <p class="muted">No channels on this connection.</p>
+    <% else %>
+      <table>
+        <thead>
+          <tr><th>Endpoint key</th><th>Label</th><th>Route key</th><th>Direction</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          <% channels.sort_by { |ch| ch.endpoint_key.to_s }.each do |channel| %>
+            <tr>
+              <td><code><%= h(channel.endpoint_key) %></code></td>
+              <td><%= h(channel.label) %></td>
+              <td><code><%= h(channel.route_key) %></code></td>
+              <td>
+                <% dir = [channel.receives ? "in" : nil, channel.sends ? "out" : nil].compact.join("+") %>
+                <%= h(dir.empty? ? "off" : dir) %>
+              </td>
+              <td>
+                <% if discovered?(channel) && !@roomed_channel_ids.include?(channel.id) %>
+                  <span class="pill discovered" title="Discovered, not yet in a room; not a live, mapped channel.">
+                    discovered, unmapped
+                  </span>
+                <% elsif discovered?(channel) %>
+                  <span class="pill on" title="Discovered, and already mapped into a room.">mapped</span>
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% end %>
+
+    <%= form(
+          action: "#{request.script_name}/communities/#{@community.slug}/platforms/#{connection.id}/delete",
+          variant: :action,
+          submit: button("Delete", action: :manage_platforms, community: @community, variant: :destructive)
+        ) %>
+    <p class="muted">
+      Removing a connection takes its channels with it, and unroutes anything that was mapped through
+      them. A protected community's connection is refused here; edit
+      config/protected_communities.yml instead.
+    </p>
+  </div>
+<% end %>
+
+<h2>Fluxer instances</h2>
+<p class="muted">
+  Fluxer is self-hostable (issue #155), so this community's Fluxer presence isn't one shared token
+  the way Telegram and Discord are: it can participate in the flagship instance and any number of
+  self-hosted ones at once, each its own row here, the same DB+panel-config bucket IRC networks use
+  rather than the single-identity connections above. A row records an operator's intent; live-wiring
+  it to a running bridge still goes through a matching <code>accounts:</code> entry in
+  bridge.config.yaml.
+</p>
+
+<div class="card">
+  <h3>Add a Fluxer instance</h3>
+  <form method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/platforms/fluxer">
+    <div class="row">
+      <div>
+        <label>Label</label>
+        <input type="text" name="label" placeholder="Flagship">
+      </div>
+      <div>
+        <label>Kind</label>
+        <select name="kind">
+          <% @fluxer_kinds.each do |kind| %>
+            <option value="<%= h(kind) %>"><%= h(kind == "flagship" ? "Flagship" : "Self-hosted") %></option>
+          <% end %>
+        </select>
+      </div>
+      <div>
+        <label>Endpoint URL</label>
+        <input type="text" name="endpoint_url" placeholder="https://fluxer.example.org">
+      </div>
+      <div>
+        <label>API key env var</label>
+        <input type="text" name="api_key_env" placeholder="FLUXER_FLAGSHIP_API_KEY">
+      </div>
+    </div>
+    <p class="muted">
+      Endpoint URL is required for a self-hosted instance and ignored (cleared) for flagship, which
+      connects through the adapter's built-in default. API key env var names the environment
+      variable holding the key; the raw key itself is never entered here.
+    </p>
+    <%= form_footer(
+          validation: "Endpoint URL is required for a self-hosted instance and ignored for flagship.",
+          submit: button("Add instance", action: :manage_platforms, community: @community)
+        ) %>
+  </form>
+</div>
+
+<% if @fluxer_instances.empty? %>
+  <div class="card muted">No Fluxer instances configured for this community.</div>
+<% end %>
+
+<% @fluxer_instances.each do |instance| %>
+  <div class="card">
+    <h3>
+      <%= h(instance.label) %>
+      <span class="pill <%= instance.kind == "flagship" ? "on" : "off" %>">
+        <%= instance.kind == "flagship" ? "flagship" : "self-hosted" %>
+      </span>
+    </h3>
+    <% if instance.kind == "self_hosted" %>
+      <p class="muted">Endpoint <code><%= h(instance.endpoint_url) %></code></p>
+    <% end %>
+    <p>
+      API key env <code><%= h(instance.api_key_env) %></code>
+      <span class="pill <%= token_env_set?(instance.api_key_env) ? "on" : "off" %>">
+        <%= token_env_set?(instance.api_key_env) ? "key present" : "not set in this process" %>
+      </span>
+    </p>
+
+    <details>
+      <summary>Edit</summary>
+      <form method="post"
+            action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/platforms/fluxer/<%= instance.id %>">
+        <div class="row">
+          <div>
+            <label>Label</label>
+            <input type="text" name="label" value="<%= h(instance.label) %>">
+          </div>
+          <div>
+            <label>Kind</label>
+            <select name="kind">
+              <% @fluxer_kinds.each do |kind| %>
+                <option value="<%= h(kind) %>"<%= " selected" if instance.kind == kind %>>
+                  <%= h(kind == "flagship" ? "Flagship" : "Self-hosted") %>
+                </option>
+              <% end %>
+            </select>
+          </div>
+          <div>
+            <label>Endpoint URL</label>
+            <input type="text" name="endpoint_url" value="<%= h(instance.endpoint_url) %>">
+          </div>
+          <div>
+            <label>API key env var</label>
+            <input type="text" name="api_key_env" value="<%= h(instance.api_key_env) %>">
+          </div>
+        </div>
+        <%= form_footer(
+              validation: "Switching an instance to flagship clears the endpoint URL it was reaching.",
+              submit: button("Save instance", action: :manage_platforms, community: @community)
+            ) %>
+      </form>
+    </details>
+
+    <%= form(
+          action: "#{request.script_name}/communities/#{@community.slug}/platforms/fluxer/#{instance.id}/delete",
+          variant: :action,
+          submit: button("Remove", action: :manage_platforms, community: @community, variant: :destructive)
+        ) %>
+  </div>
+<% end %>
+
+<h2>IRC networks</h2>
+<p class="muted">
+  A per_room network joins one IRC channel per room bridged into this community, the standard 1:1
+  mapping. A hub network mirrors every bridged room into a single hub channel instead. A saved row
+  here reaches the server the next time the bot resolves its live accounts; joining a channel still
+  needs a matching room mapping, exactly as the channels list here does not do that on its own.
+</p>
+
+<div class="card">
+  <h3>Add an IRC network</h3>
+  <form method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/platforms/irc-networks">
+    <div class="row">
+      <div>
+        <label>Name</label>
+        <input type="text" name="name" placeholder="libera">
+      </div>
+      <div>
+        <label>Host</label>
+        <input type="text" name="host" placeholder="irc.libera.chat">
+      </div>
+      <div>
+        <label>Port</label>
+        <input type="number" name="port" placeholder="6697">
+      </div>
+      <div>
+        <label>TLS</label>
+        <select name="tls">
+          <option value="true" selected>Yes</option>
+          <option value="false">No</option>
+        </select>
+      </div>
+      <div>
+        <label>Nick</label>
+        <input type="text" name="nick" placeholder="rubotty">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>SASL user</label>
+        <input type="text" name="sasl_user">
+      </div>
+      <div>
+        <label>SASL password env var</label>
+        <input type="text" name="sasl_password_env" placeholder="IRC_LIBERA_SASL_PASSWORD">
+      </div>
+      <div>
+        <label>Mode</label>
+        <select name="mode">
+          <% @irc_network_modes.each do |mode| %>
+            <option value="<%= h(mode) %>"><%= h(Rubotty::Dashboard::Primitives::Format.enum_label(mode)) %></option>
+          <% end %>
+        </select>
+      </div>
+      <div>
+        <label>Hub channel</label>
+        <input type="text" name="hub_channel" placeholder="#community">
+      </div>
+    </div>
+    <div>
+      <label>Channels to join on connect (one per line)</label>
+      <textarea name="channels" rows="3" placeholder="#general&#10;#offtopic" style="width:100%;"></textarea>
+    </div>
+    <table style="margin-top:0.7rem;">
+      <thead><tr><th>Channel</th><th>+k key env var</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="text" name="channel_key_channel[]" placeholder="#ops" style="width:100%;"></td>
+          <td><input type="text" name="channel_key_env[]" placeholder="IRC_OPS_CHANNEL_KEY" style="width:100%;"></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="muted" style="margin:0.4rem 0;">
+      Hub channel is required, and only used, when mode is hub. Password and key env var names are the
+      NAME of an environment variable, never the raw secret itself.
+    </p>
+    <%= form_footer(
+          validation: "A hub network needs a channel to mirror every bridged room into.",
+          submit: button("Add network", action: :manage_platforms, community: @community)
+        ) %>
+  </form>
+</div>
+
+<% if @irc_networks.empty? %>
+  <div class="card muted">No IRC networks configured for this community.</div>
+<% end %>
+
+<% @irc_networks.each do |network| %>
+  <% network_channels = network.json_value(:channels) %>
+  <div class="card">
+    <h3>
+      <%= h(network.name) %>
+      <span class="pill <%= network.mode == "hub" ? "on" : "off" %>"><%= h(network.mode) %></span>
+    </h3>
+    <p class="muted">
+      <code><%= h(network.host) %>:<%= network.port %></code>
+      <%= network.tls ? "TLS" : "no TLS" %>, nick <code><%= h(network.nick) %></code>
+    </p>
+    <% if network.mode == "hub" %>
+      <p class="muted">Hub channel <code><%= h(network.hub_channel) %></code></p>
+    <% end %>
+    <% unless network_channels.empty? %>
+      <p class="muted">Channels <%= network_channels.map { |one| "<code>#{h(one)}</code>" }.join(", ") %></p>
+    <% end %>
+    <% if network.sasl_password_env %>
+      <p>
+        SASL password env <code><%= h(network.sasl_password_env) %></code>
+        <span class="pill <%= token_env_set?(network.sasl_password_env) ? "on" : "off" %>">
+          <%= token_env_set?(network.sasl_password_env) ? "key present" : "not set in this process" %>
+        </span>
+      </p>
+    <% end %>
+
+    <details>
+      <summary>Edit</summary>
+      <form method="post"
+            action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/platforms/irc-networks/<%= network.id %>">
+        <div class="row">
+          <div>
+            <label>Name</label>
+            <input type="text" name="name" value="<%= h(network.name) %>">
+          </div>
+          <div>
+            <label>Host</label>
+            <input type="text" name="host" value="<%= h(network.host) %>">
+          </div>
+          <div>
+            <label>Port</label>
+            <input type="number" name="port" value="<%= network.port %>">
+          </div>
+          <div>
+            <label>TLS</label>
+            <select name="tls">
+              <option value="true"<%= " selected" if network.tls %>>Yes</option>
+              <option value="false"<%= " selected" unless network.tls %>>No</option>
+            </select>
+          </div>
+          <div>
+            <label>Nick</label>
+            <input type="text" name="nick" value="<%= h(network.nick) %>">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>SASL user</label>
+            <input type="text" name="sasl_user" value="<%= h(network.sasl_user) %>">
+          </div>
+          <div>
+            <label>SASL password env var</label>
+            <input type="text" name="sasl_password_env" value="<%= h(network.sasl_password_env) %>">
+          </div>
+          <div>
+            <label>Mode</label>
+            <select name="mode">
+              <% @irc_network_modes.each do |mode| %>
+                <option value="<%= h(mode) %>"<%= " selected" if network.mode == mode %>>
+                  <%= h(Rubotty::Dashboard::Primitives::Format.enum_label(mode)) %>
+                </option>
+              <% end %>
+            </select>
+          </div>
+          <div>
+            <label>Hub channel</label>
+            <input type="text" name="hub_channel" value="<%= h(network.hub_channel) %>">
+          </div>
+        </div>
+        <div>
+          <label>Channels to join on connect (one per line)</label>
+          <textarea name="channels" rows="3" style="width:100%;"><%= h(network_channels.join("\n")) %></textarea>
+        </div>
+        <table style="margin-top:0.7rem;">
+          <thead><tr><th>Channel</th><th>+k key env var</th></tr></thead>
+          <tbody>
+            <% (network.json_value(:channel_keys).to_a + [["", ""]]).each do |channel, env| %>
+              <tr>
+                <td><input type="text" name="channel_key_channel[]" value="<%= h(channel) %>" style="width:100%;"></td>
+                <td><input type="text" name="channel_key_env[]" value="<%= h(env) %>" style="width:100%;"></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+        <%= form_footer(
+              validation: "Switching a network to per_room clears the hub_channel it was mirroring into.",
+              submit: button("Save", action: :manage_platforms, community: @community)
+            ) %>
+      </form>
+    </details>
+
+    <%= form(
+          action: "#{request.script_name}/communities/#{@community.slug}/platforms/irc-networks/#{network.id}/delete",
+          variant: :action,
+          submit: button("Remove", action: :manage_platforms, community: @community, variant: :destructive)
+        ) %>
+  </div>
+<% end %>

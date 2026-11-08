@@ -1,0 +1,11 @@
+# The data file that sits beside blocklist.lua, edited under Data in the
+# editor. Everything the rule decides from is here, so adding a word is a
+# one line change that needs no Lua and no second opinion about the code.
+reason: That word is not welcome here. Ask an operator if you think this is wrong.
+words:
+  - airdrop
+  - free mint
+  - guaranteed returns
+  - pump and dump
+  - seed phrase
+  - wallet drainer

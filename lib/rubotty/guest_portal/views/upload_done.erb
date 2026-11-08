@@ -1,0 +1,18 @@
+<div class="center">
+  <h1>Uploaded</h1>
+  <% if @links.size == 1 %>
+    <p><%= h(@links.first[:filename]) %> is stored, and a download link is on its way into the room.</p>
+  <% else %>
+    <p><%= @links.size %> files are stored, and a download link for each is on its way into the room.</p>
+  <% end %>
+  <ul>
+    <% @links.each do |link| %>
+      <li><%= h(link[:filename]) %>: <a href="<%= h(link[:url]) %>"><%= h(link[:url]) %></a></li>
+    <% end %>
+  </ul>
+  <% unless @failed.empty? %>
+    <p><%= @failed.size %> file<%= @failed.size == 1 ? "" : "s" %> in that selection could not be
+       stored and <%= @failed.size == 1 ? "was" : "were" %> left out: <%= h(@failed.join(", ")) %>.</p>
+  <% end %>
+  <p>This page will not upload anything else: the link that brought you here has been used.</p>
+</div>

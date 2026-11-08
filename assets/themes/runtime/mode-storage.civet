@@ -1,0 +1,70 @@
+// Mode: the light, dark or system choice, and the only piece of theme state
+// kept in the browser rather than on the server. Theme and swatch are per
+// operator and server side; mode is environmental, since wanting dark at
+// night and light at noon on the same machine is one person with two
+// reasonable answers, and syncing that across machines takes it from them.
+//
+// Its own file, rather than part of the runtime, since the head script
+// imports it and has to stay small: this runs before the first paint.
+
+MODES := ["system", "light", "dark"]
+
+// Namespaced, since localStorage is per origin and a deployment may serve
+// something else of its own from the same host.
+MODE_KEY := "rubotty.theme.mode"
+
+// "system" clears the attribute rather than setting one, so the swatch's
+// prefers-color-scheme block is what decides again.
+function apply(mode: string): string
+  unless MODES.includes mode
+    throw new Error `Unknown theme mode: ${mode}`
+
+  root := document.documentElement
+  if mode is "system"
+    root.removeAttribute "data-theme"
+  else
+    root.setAttribute "data-theme", mode
+
+  effective()
+
+// What the page is painted as right now, however that was decided.
+function effective(): string
+  override := document.documentElement.getAttribute "data-theme"
+  return override if override is "dark" or override is "light"
+
+  if window.matchMedia and window.matchMedia("(prefers-color-scheme: dark)").matches
+    "dark"
+  else
+    "light"
+
+// The mode the attribute is not carrying, for a control that toggles.
+function opposite(): string
+  if effective() is "dark" then "light" else "dark"
+
+// The remembered choice, or "system" when there is none. A browser with
+// storage switched off (a private window, a third party cookie policy) throws
+// on the read rather than answering null, so it is guarded: a page that
+// follows the OS is a fine outcome and a page that fails to load is not.
+function stored(): string
+  try
+    value := window.localStorage?.getItem MODE_KEY
+    if value and MODES.includes(value) then value else "system"
+  catch
+    "system"
+
+// Remember a choice and paint it. Returns what the page is now.
+function store(mode: string): string
+  painted := apply mode
+  try
+    window.localStorage?.setItem MODE_KEY, mode
+  catch e
+    // The choice still holds for this page and is forgotten on the next load,
+    // which is the most a browser with storage off can be given.
+    void e
+  painted
+
+// Paint the remembered choice. This is the whole of the head script.
+function restore(): string
+  apply stored()
+
+export { MODES, MODE_KEY, apply, effective, opposite, stored, store, restore }

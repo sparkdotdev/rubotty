@@ -1,0 +1,26 @@
+# The data file that sits beside trivia.lua, edited under Data in the editor.
+# Adding a question is a one line change that needs no Lua.
+#
+# close_after is seconds. It books the round_close callback, so leaving it out
+# means a round stays open until somebody types /trivia next. Install
+# round_close first, or the booking is refused and the round simply waits.
+#
+# points travels in the round's own data rather than a data file of
+# round_close's own, so closing costs no extra host call to go read one.
+label: Friday quiz
+close_after: 45
+points: 10
+questions:
+  - prompt: Which city is the capital of Portugal?
+    answer: Lisbon
+  - prompt: What does HTTP stand for?
+    answer: hypertext transfer protocol
+  - prompt: Which of these is not a Lua type?
+    answer: struct
+    options:
+      - table
+      - struct
+      - thread
+      - userdata
+  - prompt: How many host calls does one script invocation get?
+    answer: 20

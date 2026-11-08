@@ -1,0 +1,210 @@
+<h1>Viewers</h1>
+
+<div class="card">
+  <p class="muted">
+    A <strong>viewer</strong> reads every community in this deployment and changes nothing anywhere.
+    Save buttons render disabled for them and the server refuses the write regardless, so the dimension
+    is safe to hand out for oversight, a handover, or somebody who needs to see what is going on.
+  </p>
+  <p class="muted">
+    Only an administrator grants or revokes it. Viewer spans every community, so an operator of one
+    must never be able to hand out oversight of the others. Somebody can hold viewer and operate a
+    community at the same time: they read everything, and they change only what an operator of that
+    community may change.
+  </p>
+  <p class="muted">
+    Somebody who only needs to read <em>one</em> community wants the smaller role instead, under that
+    community's Operators section, which an operator there can hand out. This page is the larger ask,
+    and it is the only one that cannot be requested by DMing the bot.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Pending requests</h2>
+  <% if @viewer_requests.empty? %>
+    <p class="muted">No pending viewer requests.</p>
+  <% else %>
+    <p class="muted">
+      Filed before reading every community stopped being something a DM could ask for. Approving grants
+      the row below; denying leaves them exactly where they were and does not block a later ask, which
+      is now the community-scoped one.
+    </p>
+    <table>
+      <thead><tr><th>Requester</th><th>Platform</th><th>Requested</th><th>Decide</th></tr></thead>
+      <tbody>
+        <% @viewer_requests.each do |req| %>
+          <tr>
+            <td>
+              <%= h(req[:requester_display] || req[:requester_username] || req[:requester_native_id]) %>
+              <% unless req[:requester_username].to_s.empty? %>
+                <span class="muted">@<%= h(req[:requester_username]) %></span>
+              <% end %>
+              <div class="muted"><code><%= h(req[:requester_native_id]) %></code></div>
+            </td>
+            <td><%= h(req[:adapter]) %></td>
+            <td class="muted"><%= h(req[:requested_at]) %></td>
+            <td>
+              <form class="inline" method="post" action="<%= request.script_name %>/viewer-requests/<%= req[:id] %>/approve">
+                <button type="submit">Approve</button>
+              </form>
+              <form class="inline" method="post" action="<%= request.script_name %>/viewer-requests/<%= req[:id] %>/deny">
+                <button class="secondary" type="submit">Deny</button>
+              </form>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+</div>
+
+<div class="card">
+  <h2>Who reads everything</h2>
+  <% if @baked_in_viewers.empty? && @granted_viewers.empty? %>
+    <p class="muted">Nobody holds viewer status on this deployment.</p>
+  <% else %>
+    <p class="muted">
+      The rows marked <span class="pill protected">deployment-configured</span> are named in the configuration
+      that ships with this deployment. That file is the floor under this table: it can only add
+      viewers, and a handle on it keeps reading every community whatever is done here.
+    </p>
+    <table>
+      <thead>
+        <tr><th>Handle</th><th>Platform</th><th>Granted</th><th>By</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% @baked_in_viewers.each do |entry| %>
+          <tr>
+            <td>
+              <code><%= h(entry[:handle]) %></code>
+              <span class="pill protected">deployment-configured</span>
+            </td>
+            <td><%= baked_in_kind_label(entry[:kind]) %></td>
+            <td class="muted">ships with the deployment</td>
+            <td class="muted">n/a</td>
+            <td class="muted">protected, cannot be removed</td>
+          </tr>
+        <% end %>
+        <% @granted_viewers.each do |row| %>
+          <tr>
+            <td>
+              <code><%= h(row[:handle]) %></code>
+              <% unless row[:label].to_s.empty? %>
+                <div class="muted"><%= h(row[:label]) %></div>
+              <% end %>
+            </td>
+            <td><%= h(row[:adapter]) %></td>
+            <td class="muted"><%= h(row[:granted_at]) %></td>
+            <td class="muted"><%= h(row[:granted_by]) %></td>
+            <td>
+              <form class="inline" method="post" action="<%= request.script_name %>/viewers/<%= row[:id] %>/revoke">
+                <button class="danger" type="submit">Revoke</button>
+              </form>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+</div>
+
+<div class="card">
+  <h2>Grant viewer status</h2>
+  <p class="muted">
+    Named by the platform handle a person owns, never by their display name, which anyone can set to
+    anything. On Matrix that means the full ID (<code>@someone:example.org</code>); everywhere else the
+    bare username.
+  </p>
+  <form method="post" action="<%= request.script_name %>/viewers">
+    <p>
+      <label>Platform
+        <select name="adapter">
+          <% @viewer_adapters.each do |adapter| %>
+            <option value="<%= h(adapter) %>"><%= h(adapter) %></option>
+          <% end %>
+        </select>
+      </label>
+    </p>
+    <p><label>Handle <input type="text" name="handle" placeholder="someone" required></label></p>
+    <p><label>Name (optional) <input type="text" name="label" placeholder="Ada Lovelace"></label></p>
+    <p><button type="submit">Grant</button></p>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Hand it over with a token</h2>
+  <p class="muted">
+    For somebody whose handle you do not have yet. Mint a token, give it to them however you like, and
+    they send the bot <code>/auth</code> and the token in a private message. That grants them the role
+    and sends them their first sign-in link in the same reply.
+  </p>
+  <p class="muted">
+    A token here hands over reading every community, so only an administrator mints one: the token is
+    the grant, taken in advance. It works once, it expires whether or not anybody uses it, and it can
+    be taken back until it is used. A token for a single community is minted on that community's own
+    Operators page instead.
+  </p>
+
+  <% if @issued_auth_token %>
+    <p><strong>Here is the token. It is shown once and cannot be shown again.</strong></p>
+    <p><code><%= h(@issued_auth_token) %></code></p>
+    <p class="muted">
+      Anybody who has this reads every community on this deployment, so send it over something private
+      and do not keep a copy. If it goes astray, revoke it below and mint another.
+    </p>
+  <% end %>
+
+  <h3>Tokens outstanding</h3>
+  <% if @auth_tokens.empty? %>
+    <p class="muted">No deployment-wide tokens have been minted.</p>
+  <% else %>
+    <table>
+      <thead>
+        <tr><th>For</th><th>State</th><th>Expires</th><th>Minted by</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% @auth_tokens.each do |row| %>
+          <tr>
+            <td>
+              <% if row[:label].to_s.empty? %>
+                <span class="muted">unlabelled</span>
+              <% else %>
+                <%= h(row[:label]) %>
+              <% end %>
+              <% unless row[:redeemed_at].nil? %>
+                <div class="muted">used by <%= h(row[:redeemed_username] || row[:redeemed_native_id]) %></div>
+              <% end %>
+            </td>
+            <td><%= h(deps.auth_tokens.state_of(row)) %></td>
+            <td class="muted"><%= h(row[:expires_at]) %></td>
+            <td class="muted"><%= h(row[:created_by]) %></td>
+            <td>
+              <% if deps.auth_tokens.live?(row) %>
+                <form class="inline" method="post"
+                      action="<%= request.script_name %>/auth-tokens/<%= h(row[:public_id]) %>/revoke">
+                  <button class="danger" type="submit">Revoke</button>
+                </form>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+
+  <h3>Mint a token</h3>
+  <form method="post" action="<%= request.script_name %>/auth-tokens">
+    <p><label>Good for (hours) <input type="number" name="ttl_hours" value="24" min="1" max="336" step="1"></label></p>
+    <p><label>Who it is for (optional) <input type="text" name="label" placeholder="Ada, covering the handover"></label></p>
+    <p><button type="submit">Mint</button></p>
+  </form>
+</div>
+
+<div class="card">
+  <h2>What has been handed out</h2>
+  <p class="muted">
+    Every grant, revocation, request and denial, because a role that reads every community everywhere
+    is the one worth being able to account for later.
+  </p>
+  <%= audit_events_table(@viewer_audit, empty: "Nothing recorded yet.") %>
+</div>

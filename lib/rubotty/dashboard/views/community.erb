@@ -1,0 +1,26 @@
+<h1><%= h(@community.name) %> <span class="pill <%= @community.status == "active" ? "active" : "suspended" %>"><%= h(@community.status) %></span></h1>
+
+<div class="grid">
+  <div class="stat"><div class="n"><%= @connections %></div><div class="l">platform connections</div></div>
+  <div class="stat"><div class="n"><%= @channels %></div><div class="l">channels</div></div>
+  <div class="stat"><div class="n"><%= @operators %></div><div class="l">operators</div></div>
+  <div class="stat"><div class="n"><%= @pending %></div><div class="l">pending requests</div></div>
+  <div class="stat"><div class="n"><%= @features %></div><div class="l">feature settings</div></div>
+</div>
+
+<div class="card">
+  <h2>Lifecycle</h2>
+  <p class="muted">
+    Slug <code><%= h(@community.slug) %></code>.
+    A stopped (suspended) community stays claimed but goes quiet: its channels stop resolving so the bot relays nothing, without leaving the space.
+  </p>
+  <% if @community.status == "active" %>
+    <form class="inline" method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/stop">
+      <%= act_button("Stop community", :manage_community_lifecycle, community: @community, style: "danger") %>
+    </form>
+  <% else %>
+    <form class="inline" method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/start">
+      <%= act_button("Start community", :manage_community_lifecycle, community: @community) %>
+    </form>
+  <% end %>
+</div>

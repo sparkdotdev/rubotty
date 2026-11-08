@@ -1,0 +1,48 @@
+// The entry point for a page that is still ERB. Those pages get the figure
+// from Primitives::Identity#chart, which leaves it empty and hangs the data off
+// it, so something has to draw into it once the document is up. On a themed
+// page nothing here runs: the theme calls the emitter and gets the whole figure
+// back already drawn.
+//
+// The server and client paths use the same standard SVG renderer.
+
+import { chart } from "./chart.civet"
+
+// A figure the server drew empty, filled in place. The whole element is
+// replaced rather than only its figure div: the emitter owns the caption, the
+// figure and the data table together, and drawing half of it here would be a
+// second copy of that structure to keep in step.
+function hydrate(element: any): void
+  rows := JSON.parse element.dataset.chart or "[]"
+  return if rows.length is 0
+
+  figure := element.closest "figure.rb-chart"
+  return unless figure
+
+  caption := figure.querySelector "figcaption.rb-chart-title"
+  drawn := chart rows,
+    shape: element.dataset.shape
+    title: caption?.textContent ?? null
+    // Already capped by the server, so capping again here would silently drop
+    // the tail of a long series rather than draw it.
+    limit: rows.length
+  figure.outerHTML = drawn
+
+function draw(): void
+  // Read into a list first: hydrating replaces each figure with fresh markup
+  // that a live NodeList would then hand back around.
+  for element of Array.from document.querySelectorAll(".rb-chart-figure[data-chart]")
+    try
+      hydrate element
+    catch error
+      // One chart that cannot be drawn leaves the rest of the page alone, and
+      // the numbers are in the table underneath either way.
+      console?.warn?(`A chart could not be drawn: ${error?.message ?? error}`)
+
+// Deferred loading waits for the initial figures to be in the document.
+if document.readyState is "complete"
+  draw()
+else
+  document.addEventListener "DOMContentLoaded", draw
+
+export { draw, hydrate }

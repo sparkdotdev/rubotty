@@ -1,0 +1,131 @@
+<h1><%= h(@community.name) %>: word filter</h1>
+<%= no_rooms_notice(@community) %>
+
+<div class="card">
+  <p class="muted">
+    The word filter matches a message before the bridge relays it and, on a hit, deletes or flags it.
+    Pick a <strong>mode</strong> per scope instead of typing a word list: the shipped list already carries the
+    terms. <code>Off</code> filters nothing from it, <code>Slurs only</code> catches identity-based slurs,
+    <code>Slurs + profanity</code> also catches general vulgarity. Add house-specific words in the custom list
+    below; it always applies on top of whichever mode is chosen, even under <code>Off</code>. A per-room setting
+    (applying to every channel bridged into that room) overrides the community-wide <code>all</code> default.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Every scope</h2>
+  <p class="muted">
+    <strong>Operators are exempt by default</strong>, so your own messages are not filtered and testing the
+    filter on yourself shows nothing happening. Untick "exempt operators" on a scope to include them.
+  </p>
+  <p class="muted">
+    <code>all</code> is the community-wide default; every room below either sets its own mode or follows it.
+    What each row shows is what the bot actually applies there, so a room that has never been touched still
+    reads its real state. <strong>Follows all</strong> drops a room's own setting and puts it back on the
+    default. Custom words are edited per scope in the cards further down.
+  </p>
+  <table>
+    <thead><tr><th>Scope</th><th>Status</th><th>Mode, what to do on a hit, and whether it runs</th></tr></thead>
+    <tbody>
+      <% @matrix.each do |entry| %>
+        <tr>
+          <td>
+            <code><%= h(entry[:label]) %></code>
+            <% unless entry[:community] || entry[:configured] %>
+              <div class="muted">follows <code>all</code></div>
+            <% end %>
+          </td>
+          <td><span class="pill <%= entry[:enabled] ? "on" : "off" %>"><%= entry[:enabled] ? "on" : "off" %></span></td>
+          <td>
+            <form class="inline" method="post"
+                  action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/word-filter">
+              <input type="hidden" name="op" value="scope">
+              <input type="hidden" name="selector" value="<%= h(entry[:key]) %>">
+              <select name="mode">
+                <% word_filter_modes.each do |value, label| %>
+                  <option value="<%= value %>" <%= word_filter_mode(entry[:config]) == value ? "selected" : "" %>><%= h(label) %></option>
+                <% end %>
+              </select>
+              <select name="action">
+                <% word_filter_actions.each do |option| %>
+                  <option value="<%= h(option) %>" <%= word_action(entry[:config]) == option ? "selected" : "" %>><%= h(option) %></option>
+                <% end %>
+              </select>
+              <label class="inline" title="Operators are not filtered when this is on">
+                <input type="hidden" name="exempt[<%= h(entry[:key]) %>]" value="off">
+                <input type="checkbox" name="exempt[<%= h(entry[:key]) %>]" value="on"
+                       <%= word_exempt_operators?(entry[:config]) ? "checked" : "" %>>
+                exempt operators
+              </label>
+              <select name="enabled">
+                <option value="on" <%= entry[:enabled] ? "selected" : "" %>>on</option>
+                <option value="off" <%= entry[:enabled] ? "" : "selected" %>>off</option>
+                <% unless entry[:community] %>
+                  <option value="inherit">follows all</option>
+                <% end %>
+              </select>
+              <%= act_button("Save", :configure_word_filter, community: @community, style: "secondary") %>
+            </form>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+
+<% if @settings.empty? %>
+  <div class="card muted">
+    Nothing has its own word filter row yet. Set one from the table above, then its custom word list appears
+    here.
+  </div>
+<% end %>
+
+<% @settings.each do |setting| %>
+  <% scope = setting[:scope] == :community ? "all" : setting[:room_key] %>
+  <div class="card">
+    <h2>
+      Scope <code><%= h(scope) %></code>
+      <span class="pill <%= setting[:enabled] ? "on" : "off" %>"><%= setting[:enabled] ? "on" : "off" %></span>
+    </h2>
+    <form method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/word-filter">
+      <input type="hidden" name="selector" value="<%= h(scope) %>">
+      <div class="row">
+        <div>
+          <label>Mode</label>
+          <select name="mode">
+            <% word_filter_modes.each do |value, label| %>
+              <option value="<%= value %>" <%= word_filter_mode(setting[:config]) == value ? "selected" : "" %>><%= h(label) %></option>
+            <% end %>
+          </select>
+        </div>
+        <div>
+          <label>On a hit</label>
+          <select name="action">
+            <% word_filter_actions.each do |option| %>
+              <option value="<%= h(option) %>" <%= word_action(setting[:config]) == option ? "selected" : "" %>><%= h(option) %></option>
+            <% end %>
+          </select>
+        </div>
+        <div style="align-self:flex-end;">
+          <% if setting[:enabled] %>
+            <%= act_button("Disable", :toggle_word_filter, community: @community, style: "secondary", name: "op", value: "disable") %>
+          <% else %>
+            <%= act_button("Enable", :toggle_word_filter, community: @community, name: "op", value: "enable") %>
+          <% end %>
+        </div>
+      </div>
+      <label>Extra words to filter, on top of the mode above</label>
+      <p class="note">
+        These are ADDED to whichever mode is selected, not a replacement for it: the mode's own word list
+        still applies (even under <code>Off</code>, custom words still apply). One word or phrase per line.
+      </p>
+      <textarea name="custom" rows="4"><%= h(entries_as_lines(setting[:config], "custom")) %></textarea>
+      <div class="row" style="margin-top:0.6rem;">
+        <div><%= act_button("Save", :configure_word_filter, community: @community, name: "op", value: "save") %></div>
+      </div>
+    </form>
+  </div>
+<% end %>
+
+<%= erb :_leftover_config, layout: false %>
+

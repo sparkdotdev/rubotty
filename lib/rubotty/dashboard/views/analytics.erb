@@ -1,0 +1,206 @@
+<h1><%= h(@community.name) %> <span class="pill <%= @community.status == "active" ? "active" : "suspended" %>"><%= h(@community.status) %></span></h1>
+
+<%= window_tabs("/communities/#{h(@community.slug)}/analytics", @windows, @report[:window]) %>
+<p class="muted">Read-only aggregates over the last <strong><%= h(@report[:window]) %></strong>. Nothing here changes the bot.</p>
+
+<%
+  moderation = @report[:moderation]
+  members = @report[:members]
+  messages = @report[:messages]
+  reactions = @report[:reactions]
+  guests = @report[:guests]
+  warnings = @report[:warnings]
+  sanctions = @report[:sanctions]
+  events = @report[:events]
+  multiposts = @report[:multiposts]
+  onboarding = @report[:onboarding]
+  operator_requests = @report[:operator_requests]
+%>
+
+<h2>Message volume</h2>
+<% if messages[:available] %>
+  <div class="grid">
+    <div class="stat"><div class="n"><%= messages[:total] %></div><div class="l">relayed messages (last <%= messages[:retention_hours] %>h)</div></div>
+  </div>
+  <div class="card">
+    <%= chart(series_rows(messages[:series]), shape: :time_series, title: "Relayed messages per hour", empty: "No activity in this window.", limit: messages[:series].length) %>
+    <p class="note">Relayed messages per hour. The message map is derived state kept for about <%= messages[:retention_hours] %> hours, so volume only looks back a day whatever window is selected above.</p>
+  </div>
+  <div class="card">
+    <h2>By channel</h2>
+    <%= channel_view_tabs(@community, @window, @channel_view) %>
+    <% by_channel = @channel_view == "room" ? messages[:by_room] : messages[:by_channel] %>
+    <%= chart(by_channel, shape: :categorical_distribution, title: @channel_view == "room" ? "Relayed messages by room" : "Relayed messages by channel", empty: "No relayed messages in the last day.") %>
+  </div>
+  <div class="card">
+    <h2>By platform</h2>
+    <%= chart(messages[:by_platform], shape: :categorical_distribution, title: "Relayed messages by platform", empty: "No relayed messages in the last day.") %>
+  </div>
+  <div class="card">
+    <h2>Busiest hours</h2>
+    <%= chart(messages[:busiest_hours], shape: :categorical_distribution, title: "Busiest hours", empty: "No relayed messages in the last day.") %>
+  </div>
+<% else %>
+  <div class="card muted">Message volume is unavailable: this datastore has no message map yet. It appears once the bot has relayed on this connection.</div>
+<% end %>
+
+<h2>Moderation activity</h2>
+<div class="grid">
+  <div class="stat"><div class="n"><%= moderation[:total] %></div><div class="l">actions in window</div></div>
+</div>
+<div class="card">
+  <%= chart(series_rows(moderation[:series]), shape: :time_series, title: "Moderation actions per hour", empty: "No activity in this window.", limit: moderation[:series].length) %>
+  <p class="note">Moderation actions over time, from the audit log.</p>
+</div>
+<div class="card">
+  <h2>By action</h2>
+  <%= chart(moderation[:by_action], shape: :categorical_distribution, title: "Moderation by action", empty: "No moderation actions in this window.") %>
+</div>
+<div class="card">
+  <h2>By source</h2>
+  <%= chart(moderation[:by_source], shape: :categorical_distribution, title: "Moderation by source", empty: "No moderation actions in this window.") %>
+</div>
+<div class="card">
+  <h2>By platform</h2>
+  <%= chart(moderation[:by_platform], shape: :categorical_distribution, title: "Moderation by platform", empty: "No moderation actions in this window.") %>
+</div>
+<div class="card">
+  <h2>Top channels</h2>
+  <%= chart(moderation[:by_channel], shape: :categorical_distribution, title: "Moderation by channel", empty: "No moderation actions in this window.") %>
+</div>
+
+<h2>Active senders</h2>
+<div class="grid">
+  <div class="stat"><div class="n"><%= members[:active] %></div><div class="l">active in window</div></div>
+  <div class="stat"><div class="n"><%= members[:new_in_window] %></div><div class="l">first seen in window</div></div>
+  <div class="stat"><div class="n"><%= members[:total] %></div><div class="l">known senders</div></div>
+</div>
+<div class="card">
+  <h2>By platform</h2>
+  <%= chart(members[:by_platform], shape: :categorical_distribution, title: "Active senders by platform", empty: "No senders seen in this window.") %>
+</div>
+<div class="card">
+  <h2>Most recently active</h2>
+  <% if members[:recently_active].empty? %>
+    <p class="muted">No senders seen in this window.</p>
+  <% else %>
+    <table>
+      <thead><tr><th>Platform</th><th>Handle</th><th>Display name</th><th>Last seen</th></tr></thead>
+      <tbody>
+        <% members[:recently_active].each do |sender| %>
+          <tr>
+            <td><%= h(sender[:adapter]) %></td>
+            <td><% unless sender[:username].to_s.empty? %><code><%= h(sender[:username]) %></code><% end %></td>
+            <td><%= h(sender[:display_name]) %></td>
+            <td class="muted"><%= h(sender[:last_seen_at]) %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+    <p class="note">The identity directory records who was seen and when, per platform, never a per-person message count (message content is not stored), so this is recency, not a posting leaderboard.</p>
+  <% end %>
+</div>
+
+<h2>Reactions</h2>
+<% if reactions[:available] %>
+  <div class="grid">
+    <div class="stat"><div class="n"><%= reactions[:total] %></div><div class="l">live reactions (last <%= reactions[:retention_hours] %>h)</div></div>
+  </div>
+  <% unless reactions[:by_emoji].empty? %>
+    <div class="card">
+      <h2>Top reactions</h2>
+      <%= chart(reactions[:by_emoji], shape: :categorical_distribution, title: "Top reactions") %>
+    </div>
+  <% end %>
+<% else %>
+  <div class="card muted">Reaction activity is unavailable on this datastore.</div>
+<% end %>
+
+<h2>Guest portal</h2>
+<div class="grid">
+  <div class="stat"><div class="n"><%= guests[:active] %></div><div class="l">active invites</div></div>
+  <div class="stat"><div class="n"><%= guests[:issued_in_window] %></div><div class="l">issued in window</div></div>
+  <div class="stat"><div class="n"><%= guests[:redeemed_in_window] %></div><div class="l">redeemed in window</div></div>
+  <div class="stat"><div class="n"><%= guests[:redemption_rate] %>%</div><div class="l">redemption rate</div></div>
+  <div class="stat"><div class="n"><%= guests[:average_session_minutes] %>m</div><div class="l">average session</div></div>
+  <div class="stat"><div class="n"><%= guests[:total] %></div><div class="l">invites all time</div></div>
+</div>
+
+<h2>Warnings and sanctions</h2>
+<% if warnings[:available] && sanctions[:available] %>
+  <div class="grid">
+    <div class="stat"><div class="n"><%= warnings[:total] %></div><div class="l">warnings issued in window</div></div>
+    <div class="stat"><div class="n"><%= warnings[:active] %></div><div class="l">active warnings</div></div>
+    <div class="stat"><div class="n"><%= warnings[:repeat_offender_rate] %>%</div><div class="l">repeat-offender rate</div></div>
+    <div class="stat"><div class="n"><%= sanctions[:active] %></div><div class="l">active sanctions</div></div>
+  </div>
+  <div class="card">
+    <h2>Warnings by platform</h2>
+    <%= chart(warnings[:by_platform], shape: :categorical_distribution, title: "Warnings by platform", empty: "No warnings in this window.") %>
+  </div>
+  <div class="card">
+    <h2>Active sanctions by action</h2>
+    <%= chart(sanctions[:by_action], shape: :categorical_distribution, title: "Active sanctions by action", empty: "No active sanctions.") %>
+  </div>
+<% else %>
+  <div class="card muted">Warnings and sanctions are unavailable on this datastore.</div>
+<% end %>
+
+<h2>Events</h2>
+<% if events[:available] %>
+  <div class="grid">
+    <div class="stat"><div class="n"><%= events[:created] %></div><div class="l">created in window</div></div>
+    <div class="stat"><div class="n"><%= events[:upcoming] %></div><div class="l">upcoming scheduled</div></div>
+    <div class="stat"><div class="n"><%= events[:attendance] %></div><div class="l">positive RSVPs</div></div>
+  </div>
+  <div class="card">
+    <h2>By kind</h2>
+    <%= chart(events[:by_kind], shape: :categorical_distribution, title: "Events by kind", empty: "No events yet.") %>
+  </div>
+  <div class="card">
+    <h2>RSVP responses</h2>
+    <%= chart(events[:rsvps], shape: :categorical_distribution, title: "RSVP responses", empty: "No RSVPs yet.") %>
+  </div>
+<% else %>
+  <div class="card muted">Events are unavailable on this datastore.</div>
+<% end %>
+
+<h2>Multipost watchdog</h2>
+<% if multiposts[:available] %>
+  <div class="grid">
+    <div class="stat"><div class="n"><%= multiposts[:detections] %></div><div class="l">cross-channel fingerprints (last <%= multiposts[:retention_hours] %>h)</div></div>
+  </div>
+  <div class="card">
+    <h2>By channel</h2>
+    <%= chart(multiposts[:by_channel], shape: :categorical_distribution, title: "Multipost fingerprints by channel", empty: "No multipost fingerprints in the last day.") %>
+  </div>
+<% else %>
+  <div class="card muted">Multipost aggregates are unavailable on this datastore.</div>
+<% end %>
+
+<h2>Onboarding</h2>
+<% if onboarding[:available] %>
+  <div class="grid">
+    <div class="stat"><div class="n"><%= onboarding[:pending] %></div><div class="l">pending spaces</div></div>
+    <div class="stat"><div class="n"><%= onboarding[:approved] %></div><div class="l">approved in window</div></div>
+    <div class="stat"><div class="n"><%= onboarding[:denied] %></div><div class="l">denied in window</div></div>
+    <div class="stat"><div class="n"><%= onboarding[:approval_rate] %>%</div><div class="l">approval rate</div></div>
+  </div>
+  <div class="card">
+    <h2>Spaces by platform</h2>
+    <%= chart(onboarding[:by_platform], shape: :categorical_distribution, title: "Spaces by platform", empty: "No reviewed spaces yet.") %>
+  </div>
+<% else %>
+  <div class="card muted">Pending-space onboarding is unavailable on this datastore.</div>
+<% end %>
+
+<h2>Operator requests</h2>
+<% if operator_requests[:available] %>
+  <div class="grid">
+    <div class="stat"><div class="n"><%= operator_requests[:pending] %></div><div class="l">pending requests</div></div>
+    <div class="stat"><div class="n"><%= operator_requests[:decided] %></div><div class="l">decided in window</div></div>
+    <div class="stat"><div class="n"><%= operator_requests[:average_minutes] %>m</div><div class="l">average decision time</div></div>
+  </div>
+<% else %>
+  <div class="card muted">Operator request metrics are unavailable on this datastore.</div>
+<% end %>

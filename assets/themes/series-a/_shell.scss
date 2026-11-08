@@ -1,0 +1,572 @@
+// Series A's chrome, over the class vocabulary Primitives::Shell::CLASSES
+// declares and ../series-a/shell.civet draws. Measured against
+// DashboardMockups/02-sidebar-saas: a 264px sticky sidebar with its own
+// scroll, a 58px topbar, a drawer over a backdrop below 900px.
+//
+// Same rule as the primitive half next door: every colour is a swatch
+// custom property, no hex, no rgb(), not even for a border nobody notices.
+// overlay-scrim is the swatch role the drawer's backdrop uses.
+
+$sidebar-width: 264px;
+$sidebar-wide-width: 280px;
+$topbar-height: 58px;
+$drawer-width: 288px;
+$drawer-breakpoint: 900px;
+
+$fs-xs: 0.7rem;
+$fs-sm: 0.8rem;
+$fs-base: 0.875rem;
+
+$radius: 10px;
+$radius-sm: 7px;
+
+.rb-shell {
+  display: flex;
+  min-height: 100vh;
+  background: var(--rb-background);
+  color: var(--rb-content-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+// Sidebar.
+
+.rb-shell-side {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 $sidebar-width;
+  width: $sidebar-width;
+  // The navigation owns the scroll. Keeping the surrounding chrome clipped
+  // leaves the identity and its exit control in reach on a short viewport.
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+  // The page ground, not the card surface: a rail filled the same white as
+  // the cards beside it read as another card rather than as the chrome
+  // holding them, with only the 1px border to tell the two apart.
+  background: var(--rb-background);
+  border-right: 1px solid var(--rb-border);
+  z-index: 40;
+}
+
+@media (min-width: 1700px) {
+  .rb-shell-side {
+    flex: 0 0 $sidebar-wide-width;
+    width: $sidebar-wide-width;
+  }
+}
+
+.rb-shell-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 1.25rem 1.25rem 1rem;
+  color: var(--rb-accent-primary);
+}
+
+.rb-shell-brand-name {
+  font-size: 0.97rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--rb-header-text);
+}
+
+.rb-shell-brand-meta {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: $fs-xs;
+  color: var(--rb-muted-text);
+}
+
+// The loudest thing in the sidebar, deliberately: a deploy that never went
+// out is invisible everywhere else on the panel.
+.rb-shell-drift {
+  flex: 1 1 100%;
+  padding: 0.15rem 0.5rem;
+  border-radius: $radius-sm;
+  background: var(--rb-warning);
+  color: var(--rb-on-accent);
+  font-size: $fs-xs;
+  font-weight: 700;
+}
+
+// Scope switcher: a segmented control, the current half raised out of a
+// sunken track.
+
+.rb-shell-scopes {
+  display: flex;
+  gap: 2px;
+  margin: 0 1rem 0.9rem;
+  padding: 3px;
+  border: 1px solid var(--rb-border);
+  border-radius: $radius-sm;
+  background: var(--rb-background);
+}
+
+.rb-shell-scope {
+  flex: 1;
+  padding: 0.35rem 0.5rem;
+  border: 0;
+  border-radius: $radius-sm - 1px;
+  background: none;
+  font: inherit;
+  font-size: $fs-sm;
+  font-weight: 600;
+  color: var(--rb-muted-text);
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.rb-shell-scope--current {
+  background: var(--rb-surface);
+  border: 1px solid var(--rb-border);
+  color: var(--rb-header-text);
+}
+
+// Workspace picker.
+
+.rb-shell-workspace {
+  position: relative;
+  margin: 0 1rem 1.1rem;
+
+  &[hidden] { display: none; }
+}
+
+.rb-shell-workspace-button {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: "avatar name chevron" "avatar meta chevron";
+  align-items: center;
+  gap: 0 0.6rem;
+  width: 100%;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--rb-border);
+  border-radius: $radius - 1px;
+  background: var(--rb-surface);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  > .rb-shell-avatar { grid-area: avatar; }
+  > .rb-shell-workspace-name { grid-area: name; }
+  > .rb-shell-workspace-meta { grid-area: meta; }
+  > .rb-shell-icon { grid-area: chevron; color: var(--rb-muted-text); }
+}
+
+.rb-shell-workspace-name {
+  font-size: $fs-base;
+  font-weight: 600;
+  color: var(--rb-header-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-shell-workspace-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: $fs-xs;
+  color: var(--rb-muted-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Every glyph, nav and chrome alike, follows the text beside it.
+.rb-shell-icon {
+  display: block;
+  flex: 0 0 auto;
+  color: currentColor;
+}
+
+// A running or stopped community, readable next to its name at this size.
+.rb-shell-dot {
+  flex: 0 0 auto;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+}
+
+.rb-shell-dot--live { background: var(--rb-success); }
+
+.rb-shell-dot--off { background: var(--rb-muted-text); }
+
+.rb-shell-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: $radius-sm;
+  background: var(--rb-accent-primary);
+  color: var(--rb-on-accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: $fs-xs;
+  font-weight: 700;
+}
+
+// Menus: the community picker and the search results, one shape.
+
+.rb-shell-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  padding: 0.35rem;
+  border: 1px solid var(--rb-border);
+  border-radius: $radius;
+  background: var(--rb-surface);
+  box-shadow: 0 8px 24px -8px var(--rb-overlay-scrim);
+}
+
+.rb-shell-menu--open { display: block; }
+
+.rb-shell-menu-label {
+  display: block;
+  padding: 0.45rem 0.5rem 0.25rem;
+  font-size: $fs-xs;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--rb-muted-text);
+}
+
+.rb-shell-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: $radius-sm;
+  font-size: $fs-base;
+  color: var(--rb-content-text);
+  text-decoration: none;
+
+  &:hover { background: var(--rb-background); }
+
+  > .rb-shell-workspace-meta { margin-left: auto; }
+}
+
+// Navigation.
+
+.rb-shell-nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 0.75rem 1rem;
+
+  &[hidden] { display: none; }
+}
+
+.rb-shell-group { margin-bottom: 0.25rem; }
+
+.rb-shell-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.85rem 0.5rem 0.35rem;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+
+  > .rb-shell-icon {
+    color: var(--rb-muted-text);
+    transition: transform 0.15s ease;
+  }
+}
+
+.rb-shell-group-label {
+  font-size: $fs-xs;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--rb-muted-text);
+}
+
+.rb-shell-group--collapsed {
+  > .rb-shell-list { display: none; }
+  > .rb-shell-group-head > .rb-shell-icon { transform: rotate(-90deg); }
+}
+
+.rb-shell-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.rb-shell-link {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.1rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: $radius-sm;
+  font-size: $fs-base;
+  font-weight: 500;
+  color: var(--rb-muted-text);
+  text-decoration: none;
+
+  > .rb-shell-icon { color: var(--rb-muted-text); }
+
+  &:hover {
+    background: var(--rb-background);
+    color: var(--rb-content-text);
+  }
+}
+
+// A tint rather than a fill: the current section has to read at a glance down
+// a list of sixteen without shouting over the page beside it. Mixed from the
+// accent rather than named, the same reason a Notice tints itself: the swatch
+// has no tint step of its own. No side bar either, which was an invention
+// nothing else in the sidebar carries.
+.rb-shell-link--current {
+  background: color-mix(in srgb, var(--rb-accent-primary) 10%, var(--rb-surface));
+  color: var(--rb-accent-primary);
+  font-weight: 600;
+
+  > .rb-shell-icon { color: var(--rb-accent-primary); }
+}
+
+.rb-shell-badge {
+  margin-left: auto;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--rb-accent-primary);
+  color: var(--rb-on-accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: $fs-xs;
+  font-weight: 700;
+}
+
+// Identity, pinned to the bottom of the sidebar.
+
+.rb-shell-identity {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: "avatar name out" "avatar role out";
+  align-items: center;
+  gap: 0 0.6rem;
+  margin-top: auto;
+  padding: 0.9rem 1rem 1.1rem;
+  border-top: 1px solid var(--rb-border);
+
+  > .rb-shell-avatar {
+    grid-area: avatar;
+    border-radius: 999px;
+  }
+
+  > form {
+    grid-area: out;
+    margin: 0;
+  }
+}
+
+.rb-shell-identity-name {
+  grid-area: name;
+  font-size: $fs-sm;
+  font-weight: 600;
+  color: var(--rb-header-text);
+}
+
+.rb-shell-identity-role {
+  grid-area: role;
+  font-size: $fs-xs;
+  color: var(--rb-muted-text);
+}
+
+// Main column.
+
+.rb-shell-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.rb-shell-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  flex: 0 0 $topbar-height;
+  height: $topbar-height;
+  padding: 0 1.6rem;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--rb-background);
+  border-bottom: 1px solid var(--rb-border);
+}
+
+.rb-shell-topbar-start,
+.rb-shell-topbar-end {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.rb-shell-topbar-end { flex: 0 0 auto; }
+
+.rb-shell-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  font-size: $fs-base;
+}
+
+.rb-shell-crumb {
+  color: var(--rb-muted-text);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.rb-shell-crumb--current {
+  font-weight: 600;
+  color: var(--rb-header-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rb-shell-crumb-sep { color: var(--rb-muted-text); }
+
+.rb-shell-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 14rem;
+  height: 2.1rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--rb-border);
+  border-radius: $radius-sm;
+  background: var(--rb-surface);
+  color: var(--rb-muted-text);
+
+  // The results menu hangs off the field's own box rather than the topbar's.
+  > .rb-shell-menu {
+    top: calc(100% + 0.4rem);
+    width: 22rem;
+    left: auto;
+    right: 0;
+  }
+}
+
+.rb-shell-search-field {
+  width: 100%;
+  border: 0;
+  background: none;
+  outline: 0;
+  font: inherit;
+  font-size: $fs-base;
+  color: var(--rb-content-text);
+}
+
+.rb-shell-icon-button,
+.rb-shell-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.1rem;
+  height: 2.1rem;
+  border: 1px solid var(--rb-border);
+  border-radius: $radius-sm;
+  background: var(--rb-surface);
+  color: var(--rb-muted-text);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--rb-background);
+    color: var(--rb-content-text);
+  }
+}
+
+// Off screen until the drawer breakpoint, where it is the only way to the
+// navigation.
+.rb-shell-toggle { display: none; }
+
+// The well the page sits in: the padding is here and the reading column is
+// the page's own (see .rb-page in style.scss), the way the mockup caps
+// .content-inner and leaves .content to the padding. Capping both meant the
+// inner one won, and the column was no wider at 1920 than at 1280.
+.rb-shell-content {
+  flex: 1;
+  padding: 1.9rem 2.4rem 4rem;
+  width: 100%;
+  min-width: 0;
+}
+
+// The licence notice, which travels with the page rather than belonging to a
+// theme. Quiet here, since it is a standing disclosure that says the same
+// thing on every screen.
+.rb-shell-footer {
+  padding: 1rem 2.4rem 2rem;
+  border-top: 1px solid var(--rb-border);
+  font-size: $fs-xs;
+  line-height: 1.6;
+  color: var(--rb-muted-text);
+
+  a { color: var(--rb-accent-primary); }
+}
+
+.rb-shell-backdrop { display: none; }
+
+.rb-shell :focus-visible {
+  outline: 2px solid var(--rb-focus-ring);
+  outline-offset: 2px;
+}
+
+// The drawer. Below this width the sidebar leaves the flow entirely and
+// slides over the page, and the topbar's own toggle is what opens it.
+@media (max-width: $drawer-breakpoint) {
+  .rb-shell-toggle { display: inline-flex; }
+  .rb-shell-search { display: none; }
+
+  .rb-shell-side {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100dvh;
+    width: $drawer-width;
+    flex-basis: $drawer-width;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+
+  .rb-shell-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    background: var(--rb-overlay-scrim);
+  }
+
+  .rb-shell--open {
+    > .rb-shell-side { transform: translateX(0); }
+    > .rb-shell-backdrop { display: block; }
+  }
+
+  .rb-shell-topbar { padding: 0 0.9rem; }
+  .rb-shell-content { padding: 1.4rem 1.1rem 3rem; }
+
+  // Only the page in hand fits, so the trail back out goes.
+  .rb-shell-crumb:not(.rb-shell-crumb--current),
+  .rb-shell-crumb-sep { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rb-shell-side { transition: none; }
+  .rb-shell-group-head > .rb-shell-icon { transition: none; }
+}

@@ -1,0 +1,20 @@
+// A Field's own control sits directly under its label in every theme's
+// markup, so a taller neighbour (a two-line label, a longer hint) should
+// never drag it out of line with the row it's in. Three themes solved that
+// with their own align-items call and got it wrong twice; the fourth's
+// filter variant got it wrong a third way. One rule here, included wherever
+// a theme lays out a Form's fields, is the fix landing in all four at once
+// instead of a fourth per-theme patch chasing the same pixels.
+@mixin form-fields-align {
+  align-items: flex-start;
+}
+
+// The common case: a wrapping flex row of fields, gapped by the two spacing
+// tokens a theme's own scale already owns.
+@mixin form-fields-grid($row-gap, $column-gap) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $row-gap $column-gap;
+
+  @include form-fields-align;
+}

@@ -1,0 +1,212 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "ruby",
+  "secrets": ["SOURCE_COMMIT", "BUNDLE_WITH"],
+  "steps": {
+    "os": {
+      "secrets": [],
+      "inputs": [
+        {
+          "image": "debian:trixie-slim"
+        }
+      ],
+      "commands": [
+        "apt-get update",
+        "apt-get upgrade -y --no-install-recommends"
+      ]
+    },
+    "runtime": {
+      "secrets": [],
+      "inputs": [
+        {
+          "step": "os"
+        },
+        {
+          "local": true,
+          "include": [
+            "scripts/build-ruby.sh",
+            "scripts/build-lua.sh",
+            "scripts/build-teal.sh",
+            "scripts/runtime-components.rb"
+          ]
+        }
+      ],
+      "commands": [
+        "apt-get update",
+        "apt-get install -y --no-install-recommends libyaml-0-2 libssl3t64 zlib1g libffi8 libgmp10 libreadline8t64 libncurses6 libjemalloc2 curl wget unzip zip tzdata ca-certificates git",
+        "apt-get install -y --no-install-recommends build-essential autoconf bison rustc cargo pkg-config libyaml-dev zlib1g-dev libssl-dev libffi-dev libgmp-dev libreadline-dev libncurses-dev libjemalloc-dev",
+        "sh /app/build-ruby.sh",
+        "sh /app/build-lua.sh",
+        "luarocks install lua-messagepack-lua53 0.5.4",
+        "lua -l MessagePack /dev/null",
+        "luarocks install fennel || echo fennel unavailable, carrying on",
+        "luarocks install moonscript || echo moonscript unavailable, carrying on",
+        "sh /app/build-teal.sh || echo teal unavailable, carrying on",
+        "ruby /app/runtime-components.rb capture"
+      ]
+    },
+    "toolchain": {
+      "secrets": [],
+      "inputs": [
+        {
+          "step": "runtime"
+        },
+        {
+          "local": true,
+          "include": []
+        }
+      ],
+      "commands": [
+        "apt-get update",
+        "apt-get install -y --no-install-recommends git openssh-client build-essential libpq-dev libsqlite3-dev libffi-dev libyaml-dev zlib1g-dev libssl-dev",
+        "bundle config set --global force_ruby_platform true"
+      ],
+      "deployOutputs": []
+    },
+    "install": {
+      "secrets": ["BUNDLE_WITH"],
+      "inputs": [
+        {
+          "step": "toolchain"
+        },
+        {
+          "local": true,
+          "include": [
+            "Gemfile",
+            "Gemfile.lock",
+            "scripts/remove-obsolete-default-json.rb",
+            "scripts/prepare-railpack-yaml.rb",
+            "vendor"
+          ],
+          "exclude": ["**/.git"]
+        }
+      ],
+      "commands": [
+        "gem install -N bundler -v 4.0.16",
+        "ruby /app/prepare-railpack-yaml.rb",
+        "GEM_HOME=/usr/local/bundle BUNDLE_FROZEN=true bundle install",
+        "bundle exec ruby /app/remove-obsolete-default-json.rb",
+        "rm -rf /app/vendor/yamlcamel-ruby /app/vendor/cache"
+      ],
+      "deployOutputs": []
+    },
+    "assets": {
+      "secrets": [],
+      "inputs": [
+        {
+          "step": "install"
+        },
+        {
+          "local": true,
+          "include": [
+            "scripts/build-node.sh",
+            "scripts/strip-bom.js",
+            "package.json",
+            "package-lock.json",
+            "assets",
+            "scripts/clean-dashboard-assets.js",
+            "scripts/build-dashboard-bundle.js",
+            "licenses"
+          ]
+        }
+      ],
+      "commands": [
+        "sh /app/build-node.sh",
+        "npm ci --no-audit --no-fund",
+        "npm run build"
+      ],
+      "deployOutputs": []
+    },
+    "build": {
+      "secrets": ["SOURCE_COMMIT"],
+      "inputs": [
+        {
+          "step": "assets"
+        },
+        {
+          "local": true,
+          "include": [
+            "."
+          ],
+          "exclude": [
+            "node_modules",
+            "vendor/yamlcamel-ruby",
+            "vendor/yamlcamel-ruby/**"
+          ]
+        }
+      ],
+      "deployOutputs": [],
+      "commands": [
+        "bundle config set --local force_ruby_platform true",
+        "sh /app/scripts/resolve-version.sh"
+      ]
+    }
+  },
+  "deploy": {
+    "variables": {
+      "RUBY_YJIT_ENABLE": "1",
+      "BUNDLE_FROZEN": "true"
+    },
+    "aptPackages": [
+      "libyaml-0-2",
+      "libssl3t64",
+      "zlib1g",
+      "libffi8",
+      "libgmp10",
+      "libreadline8t64",
+      "libncurses6",
+      "libjemalloc2",
+      "curl",
+      "wget",
+      "unzip",
+      "zip",
+      "tzdata",
+      "ca-certificates",
+      "imagemagick",
+      "ffmpeg",
+      "libzbar0",
+      "tesseract-ocr"
+    ],
+    "inputs": [
+      {
+        "step": "install",
+        "include": [
+          "/usr/local"
+        ],
+        "exclude": [
+          "/usr/local/bundle"
+        ]
+      },
+      {
+        "step": "install",
+        "include": [
+          "/usr/local/bundle"
+        ]
+      },
+      {
+        "step": "build",
+        "include": [
+          "."
+        ],
+        "exclude": [
+          "node_modules",
+          ".git",
+          "**/.git",
+          ".env",
+          ".env.*",
+          "**/.env",
+          "**/.env.*",
+          ".ssh",
+          "**/.ssh",
+          "vendor/yamlcamel-ruby",
+          "vendor/yamlcamel-ruby/**",
+          "deploy/ci",
+          "deploy/ci/**"
+        ]
+      }
+    ],
+    "base": {
+      "step": "os"
+    }
+  }
+}

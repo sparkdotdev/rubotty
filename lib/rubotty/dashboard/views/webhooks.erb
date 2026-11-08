@@ -1,0 +1,30 @@
+<h1><%= h(@community.name) %>: webhooks</h1>
+
+<div class="card muted">
+  Where this community's events are sent, and what happened to every attempt at sending one.
+  Each delivery is signed, so a subscriber can tell it really came from here; the signature and the
+  <code>webhook-id</code>, <code>webhook-timestamp</code> and <code>webhook-signature</code> headers
+  follow the Standard Webhooks conventions, so an off-the-shelf library on their side verifies it.
+  Delivery is at least once and a subscriber should ignore an id they have already seen.
+  Events reach one subscriber in the order they happened: a delivery that has not landed yet holds
+  the ones behind it until it lands or is given up on.
+  A subscription is created over the REST API rather than here, because creating one hands out a
+  signing secret.
+  Deliveries are kept for <%= Rubotty::ControlPlane::Webhooks::RETENTION / (24 * 60 * 60) %> days.
+</div>
+
+<h2>Subscriptions</h2>
+<%= webhook_subscriptions_table(@subscriptions,
+                                empty: "Nothing in this community is subscribed to anything.") %>
+
+<h2>Deliveries</h2>
+<% if @failed.positive? %>
+  <p class="muted">
+    <%= @failed %> <%= @failed == 1 ? "delivery has" : "deliveries have" %> been given up on.
+    Sending one again puts it back on the queue with its attempts reset, which is what an endpoint
+    that has since been fixed needs.
+  </p>
+<% end %>
+
+<%= webhook_deliveries_table(@deliveries, community: @community,
+                             empty: "Nothing has been sent yet.") %>

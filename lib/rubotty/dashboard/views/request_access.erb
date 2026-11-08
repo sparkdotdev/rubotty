@@ -1,0 +1,22 @@
+<div class="card">
+  <h2><%= h(@community.name || @community.slug) %></h2>
+  <p class="note">
+    You are not an operator of this community, so its rooms, people, filters and analytics are not
+    shown here. That is the same for every operator: a community is only readable by the people who
+    run it.
+  </p>
+
+  <% if @requested == :created %>
+    <p class="flash notice">Asked. An administrator will see the request on their operators page.</p>
+  <% elsif @requested == :already %>
+    <p class="note">You have already asked for this one. It is waiting on an administrator.</p>
+  <% elsif @requested == :failed %>
+    <p class="flash error">Something went wrong recording that. Try again, or ask an administrator directly.</p>
+  <% else %>
+    <form method="post" action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/request-access">
+      <button type="submit">Request access</button>
+    </form>
+  <% end %>
+
+  <p class="note"><a href="<%= request.script_name %>/">Back to your communities</a></p>
+</div>

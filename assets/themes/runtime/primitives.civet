@@ -1,0 +1,862 @@
+// The client half of lib/rubotty/dashboard/primitives.rb: the same markup
+// emitters a theme composes a page from, ported so a theme calls one shared
+// implementation instead of writing its own copy. Chart is the exception: it
+// lives in ./chart.civet, because drawing one is a whole engine layer rather
+// than a markup emitter, and because it imports from this file.
+//
+// Every function mirrors its Ruby counterpart's whole contract, and throws
+// where Ruby raises, so a screen asking for markup it won't draw says so.
+
+NOTICE_TONES := ["info", "success", "warning", "danger", "empty"]
+BUTTON_VARIANTS := ["primary", "secondary", "destructive"]
+BUTTON_SIZES := ["small", "medium"]
+SECTION_VARIANTS := ["default", "plain", "collapsible"]
+PAGE_VARIANTS := ["default", "wide"]
+FORM_VARIANTS := ["edit", "filter", "action"]
+FIELD_TYPES := ["text", "number", "secret", "file", "select", "multiline", "code", "toggle", "choice", "checklist", "mapping-list"]
+FIELD_SIZES := ["short", "medium", "full"]
+STATUS_TONES := ["good", "bad", "warn", "neutral", "unknown"]
+KEY_VALUES_VARIANTS := ["inline", "stacked"]
+CODE_VARIANTS := ["inline", "block"]
+
+// A checkbox that submits nothing when unticked has already caused a bug, so
+// a boolean Field is a select offering these two rather than a checkbox.
+TOGGLE_OPTIONS := [["true", "Yes"], ["false", "No"]]
+
+// Where a hint cuts, with the whole of it kept on hover. A Field told to
+// wrap its hint ignores this and draws every word.
+HINT_LIMIT := 140
+
+// Rack::Utils.escape_html's five characters, matching what Primitives.escape
+// covers on the Ruby side for the same five.
+ESCAPES := { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }
+
+function escapeHtml(value: any): string
+  String(value ?? "").replace /[&<>"']/g, (ch: string) => ESCAPES[ch]
+
+// Ruby's Array(), where nil is the empty list and a bare value is a list of
+// one. A primitive that takes a list takes one value just as happily on the
+// Ruby side, so a caller passing a single duration gets one tag rather than a
+// TypeError out of the middle of a render.
+function toArray(value: any): any[]
+  return [] if value is null or value is undefined
+  return value if Array.isArray value
+
+  [value]
+
+// Every primitive that takes a bounded token (a tone, a variant) checks it
+// here rather than trusting the caller, the same way Primitives.check! does.
+function checkOneOf(allowed: string[], given: string, what: string): void
+  return if allowed.includes given
+
+  throw new Error `unknown ${what} ${JSON.stringify(given)}, expected one of ${allowed.join(", ")}`
+
+// A keyword the Ruby signature gives no default, so Ruby raises when it is
+// missing. This throws for the same reason: a form with no action posts the
+// page back to itself and a field with no name submits nothing, both of which
+// look like a working screen right up until somebody saves.
+function requiredArgument(opts: any, name: string): any
+  value := opts?[name]
+  throw new Error `missing keyword: :${name}` if value is null or value is undefined
+
+  value
+
+// Attributes as a string, skipping any whose value is nil or false, with
+// true rendering the bare attribute. Mirrors Primitives.attributes.
+function attributes(pairs: any): string
+  Object.keys(pairs).map((name) =>
+    value := pairs[name]
+    return "" if value is null or value is undefined or value is false
+    return ` ${name}` if value is true
+
+    ` ${name}="${escapeHtml(value)}"`
+  ).join ""
+
+// How a value reaches a page, ported from Primitives::Format. Every value a
+// themed section draws goes through here, so a raw second count or a raw
+// second-timestamp never lands on screen just because the client draws it
+// instead of the server.
+DURATION_UNITS := [
+  [604_800, "w", "week"]
+  [86_400, "d", "day"]
+  [3600, "h", null]
+  [60, "m", null]
+  [1, "s", null]
+]
+
+function durationRemainder(remainder: number, smallerUnits: any[]): string
+  return "" if remainder is 0 or smallerUnits.length is 0
+
+  [size, abbr] := smallerUnits[0]
+  whole := Math.floor remainder / size
+  return "" if whole is 0
+
+  `${whole}${abbr}`
+
+// A count of seconds as a short string, the same cascade
+// ConfigHumanizer.duration walks: the largest unit that fits, plus at most
+// one smaller remainder unit.
+function duration(value: any): string
+  seconds := Math.trunc Number(value) || 0
+  return "0s" if seconds <= 0
+
+  for index of [0...DURATION_UNITS.length]
+    [size, abbr, word] := DURATION_UNITS[index]
+    continue if seconds < size
+
+    whole := Math.floor seconds / size
+    remainder := seconds - whole * size
+    head := word ? `${whole} ${word}${whole is 1 ? "" : "s"}` : `${whole}${abbr}`
+    tail := durationRemainder remainder, DURATION_UNITS.slice(index + 1)
+    return tail is "" ? head : `${head} ${tail}`
+
+  `${seconds}s`
+
+// The one timestamp format, always UTC. Values off the internal surface
+// arrive as an ISO 8601 string (js-yaml's own timestamp decode), never a
+// second count, so this parses rather than doing arithmetic.
+function timestamp(value: any): string
+  return "" if value is null or value is undefined or value is ""
+
+  date := value instanceof Date ? value : new Date(String(value))
+  return String(value) if Number.isNaN date.getTime()
+
+  pad := (n: number) => String(n).padStart(2, "0")
+  `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ` +
+    `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())} UTC`
+
+// A byte count the way a person reads one, the same thresholds Format.bytes
+// uses.
+function bytes(value: any): string
+  size .= Number(value) || 0
+  unit .= "B"
+  for candidate of ["KB", "MB", "GB", "TB"]
+    break if size < 1000
+
+    size = size / 1000
+    unit = candidate
+
+  unit is "B" ? `${Math.trunc(size)} B` : `${size.toFixed(1)} ${unit}`
+
+// Cut at a declared length, on a whole word where one is near the cut.
+function truncate(text: any, limit: number): string
+  body := String(text ?? "")
+  return body if body.length <= limit
+
+  cut := body.slice 0, limit
+  space := cut.lastIndexOf " "
+  space > limit - 20 ? `${cut.slice(0, space)}...` : `${cut}...`
+
+INITIALISMS := new Set ["api", "id", "url", "uri", "utc", "rsvp", "faq", "ttl", "dm", "ip", "http",
+                        "https", "json", "yaml", "sql", "css", "html", "js", "cli", "ui", "ok"]
+
+// A label or a header: sentence case, no trailing colon, initialisms in
+// capitals, and any word the caller capitalised left alone.
+function label(text: any): string
+  words := String(text ?? "").replace(/_/g, " ").trim().replace(/[:.]$/, "").split(/\s+/).filter (w) => w !== ""
+  return "" if words.length is 0
+
+  shaped := words.map (word) => INITIALISMS.has(word.toLowerCase()) ? word.toUpperCase() : word
+  shaped[0] = shaped[0].charAt(0).toUpperCase() + shaped[0].slice(1)
+  shaped.join " "
+
+// An enum token as the reader sees it.
+function enumLabel(token: any): string
+  label String(token ?? "").replace(/-/g, " ")
+
+// Yes and No, never true and false.
+function boolean(value: any): string
+  value ? "Yes" : "No"
+
+// A list of durations, which is where the raw second counts leaked out.
+function durations(values: any): string
+  (values ?? []).map((value: any) => duration(value)).join ", "
+
+// Every value a themed section draws goes through here, named by what it is,
+// mirroring Primitives::Format.value.
+function formatValue(raw: any, as: string = "text"): string
+  switch as
+    when "timestamp"
+      timestamp raw
+    when "duration"
+      duration raw
+    when "durations"
+      durations raw
+    when "bytes"
+      bytes raw
+    when "boolean"
+      boolean raw
+    when "enum"
+      enumLabel raw
+    when "text", "code"
+      String raw ?? ""
+    else
+      throw new Error `unknown format ${JSON.stringify(as)}`
+
+Format := { timestamp, duration, durations, bytes, truncate, label, enumLabel, boolean, value: formatValue }
+
+// 1. Page.
+//
+// actions is a screen's own right-aligned controls (a scope switch, a
+// primary button) next to the title, so it has one consistent place to sit
+// instead of getting stuffed into the first section as an extra control.
+// Omitted, the header draws exactly as it always has: an h1 alone.
+function page(opts: any): string
+  title := opts.title
+  lede := opts.lede ?? null
+  actions := opts.actions ?? null
+  sections := opts.sections ?? ""
+  variant := opts.variant ?? "default"
+  checkOneOf PAGE_VARIANTS, variant, "page variant"
+
+  intro := lede ? `<p class="rb-page-lede">${escapeHtml(lede)}</p>` : ""
+  titleH1 := `<h1 class="rb-page-title">${escapeHtml(title)}</h1>`
+  header := actions ? `<div class="rb-page-header">${titleH1}<div class="rb-page-actions">${actions}</div></div>` : titleH1
+  `<div class="rb-page rb-page--${variant}">` +
+    `${header}${intro}` +
+    `<div class="rb-page-body">${sections}</div></div>`
+
+// A run of otherwise loose forms or buttons that belong on one row instead
+// of stacking, the way Page's own actions do beside the title. Not one of
+// the fifteen primitives, a small layout helper the same way escapeHtml and
+// attributes are, so screens.civet can still compose it without hand-rolling
+// a div of its own.
+function actionsRow(body: string): string
+  `<div class="rb-actions-row">${body}</div>`
+
+// A collapsible Section's own disclosure marker, which side it draws on: the
+// default reads chevron-then-heading, and a summary that is itself a row of
+// controls (a switch, a title, a chevron of its own on the far side) wants
+// the marker last instead. A data attribute rather than a second class, so a
+// theme still styles this off the one rb-section--collapsible rule.
+SECTION_CHEVRON_SIDES := ["start", "end"]
+
+// 2. Section. A titled Section is still what a title is for: omitting the
+// title on the default variant throws, matching the Ruby ArgumentError this
+// theme's own Overview render used to run straight into.
+//
+// summary, collapsible only, is trusted markup rather than escaped text, for
+// a disclosure whose own heading is more than a string (a toggle switch and
+// a description beside the title, say): given, it replaces title in the
+// summary itself, and title still names the section for anything that reads
+// this page's structure rather than its pixels.
+function section(opts: any): string
+  title := opts.title ?? null
+  body := opts.body ?? ""
+  variant := opts.variant ?? "default"
+  open := opts.open ?? false
+  summary := opts.summary ?? null
+  chevron := opts.chevron ?? "start"
+  checkOneOf SECTION_VARIANTS, variant, "section variant"
+  checkOneOf SECTION_CHEVRON_SIDES, chevron, "section chevron side"
+  if title is null and variant is "default"
+    throw new Error "a titled Section is what a title is for"
+
+  return collapsibleSection(title, body, open, summary, chevron) if variant is "collapsible"
+
+  heading := title ? `<h2 class="rb-section-title">${escapeHtml(title)}</h2>` : ""
+  `<section class="rb-section rb-section--${variant}">${heading}` +
+    `<div class="rb-section-body">${body}</div></section>`
+
+function collapsibleSection(title: any, body: any, open: boolean, summary: any = null, chevron: string = "start"): string
+  head := summary ?? escapeHtml(title)
+  `<details class="rb-section rb-section--collapsible" data-chevron="${chevron}"${open ? " open" : ""}>` +
+    `<summary class="rb-section-title">${head}</summary>` +
+    `<div class="rb-section-body">${body}</div></details>`
+
+// A collapsible Section's own summary when it is a row of controls rather
+// than a string: a toggle switch, an optional Config link beside it (a
+// bespoke-page feature's, promoted out of the row body since reaching it
+// never needed the row expanded), then a title and description. toggle and
+// configLink are both Buttons already drawn through this module (a Form
+// wrapping one, typically), so the only markup written by hand here is the
+// row's own wrapping, the same as mappingListRow below wraps Field.
+// [data-feature-toggle] and its neighbours are plain attribute hooks rather
+// than a bespoke class, kept out of the primitive vocabulary the same way a
+// table cell's own content is.
+function toggleSummary(toggle: string, on: boolean, title: any, description: any = null, configLink: any = null): string
+  desc := description ? `<p data-feature-desc>${escapeHtml(description)}</p>` : ""
+  `<span data-feature-toggle="${on ? "on" : "off"}">${toggle}</span>` +
+    (configLink ?? "") +
+    `<span data-feature-heading><strong>${escapeHtml(title)}</strong>${desc}</span>`
+
+// 3. Notice.
+function notice(text: any, tone: string = "info"): string
+  checkOneOf NOTICE_TONES, tone, "notice tone"
+  mark := tone is "empty" ? "" : '<span class="rb-notice-mark" aria-hidden="true"></span>'
+  role := tone is "danger" ? ' role="alert"' : ""
+  `<p class="rb-notice rb-notice--${tone}"${role}>${mark}${escapeHtml(text)}</p>`
+
+// 4. Table. columns is [{ key, header, format, truncate, align, tone }], rows
+// is an array of plain objects keyed the same way, actions is (row) => string.
+//
+// tone names a second key on the same row holding one of STATUS_TONES, which
+// is what draws a column of states as the Status pill rather than a bare word.
+// It travels as data rather than being read back out of the text here: "Loud,
+// DMed 2" and "Loud, reached nobody" are one column and opposite outcomes.
+//
+// Every cell carries its column's label as data-l and its format as
+// data-format the same way, so a stylesheet can build a phone card layout or
+// target a column by format without either travelling as a second argument.
+MAX_COLUMNS := 7
+
+function tableHeader(column: any): string
+  align := column.align is "end" ? ' class="rb-align-end"' : ""
+  `<th${align}>${escapeHtml(label(column.header))}</th>`
+
+function cellBody(column: any, row: any, text: string): string
+  return code(text, "inline") if column.format is "code"
+  return state(text, row[column.tone] ?? "unknown") if column.tone
+
+  escapeHtml text
+
+function tableCell(column: any, row: any): string
+  raw := row[column.key]
+  text := formatValue raw, column.format ?? "text"
+  align := column.align is "end" ? ' class="rb-align-end"' : ""
+  data := attributes { "data-l": label(column.header), "data-format": column.format ?? null }
+  `<td${align}${data}>${cellBody(column, row, text)}</td>`
+
+function tableRow(columns: any[], row: any, actions: any): string
+  cells .= columns.map((column) => tableCell(column, row)).join ""
+  cells += `<td class="rb-table-actions"${attributes({ "data-l": "Actions" })}>${actions(row)}</td>` if actions
+  `<tr>${cells}</tr>`
+
+// A live filter over the rows already on the page, no request, plus the
+// count it keeps current as a reader narrows it: the affordance the mockup
+// draws above every list, missing from Table until now. Wired in
+// ./index.civet, which is where every other delegated behaviour lives.
+function tableToolbar(count: number): string
+  `<div class="rb-table-toolbar">` +
+    `<input class="rb-table-filter-field" type="search" data-table-filter autocomplete="off" ` +
+    `aria-label="Filter this list" placeholder="Filter this list">` +
+    `<span class="rb-table-count">${count} item${count is 1 ? "" : "s"}</span></div>`
+
+function table(opts: any): string
+  columns := opts.columns
+  rows := opts.rows ?? []
+  empty := opts.empty
+  actions := opts.actions ?? null
+  if columns.length + (actions ? 1 : 0) > MAX_COLUMNS
+    throw new Error `a table draws at most ${MAX_COLUMNS} columns, asked for ${columns.length}`
+  return notice(empty, "empty") if rows.length is 0
+
+  head .= columns.map((column) => tableHeader(column)).join ""
+  head += '<th class="rb-align-end">Actions</th>' if actions
+  body := rows.map((row) => tableRow(columns, row, actions)).join ""
+  tableToolbar(rows.length) +
+    `<div class="rb-table-scroll"><table class="rb-table"><thead><tr>${head}</tr></thead>` +
+    `<tbody>${body}</tbody></table></div>`
+
+// The one action footer, and the order it always reads in: the validation a
+// reader needs while pressing the control, then the subordinate controls,
+// then the single primary submit, last. Mirrors Primitives#form_footer, which
+// the unported ERB screens call for the same footer.
+//
+// A second primary makes two controls look like the way forward, and a
+// destructive control sharing a footer with a submit is one mis-click from
+// the thing it cannot undo, so both are refused here rather than reviewed.
+function formFooter(submit: any, actions: string, validation: any): string
+  throw new Error "a destructive control is its own action Form, not a footer action" if
+    actions.includes 'data-destructive="true"'
+  throw new Error "the submit is the footer's one primary action" if
+    actions.includes "rb-button--primary"
+
+  note := validation ? notice(validation, "info") : ""
+  submitRow := `<div class="rb-form-submit">${submit}</div>`
+  return submitRow if note is "" and actions is ""
+
+  `<div class="rb-form-actions">${note}${actions}${submitRow}</div>`
+
+// 5. Form. A group of Fields and one action footer, always last. enctype is
+// "multipart/form-data" for a form carrying a file Field: Rack only parses an
+// upload out of a request encoded that way, so a file Field is otherwise
+// submitted as its bare filename string instead of the file's bytes.
+function form(opts: any): string
+  action := requiredArgument opts, "action"
+  submit := requiredArgument opts, "submit"
+  fields := opts.fields ?? ""
+  body := opts.body ?? null
+  actions := opts.actions ?? ""
+  validation := opts.validation ?? null
+  variant := opts.variant ?? "edit"
+  hidden := opts.hidden ?? {}
+  enctype := opts.enctype ?? null
+  checkOneOf FORM_VARIANTS, variant, "form variant"
+  method := variant is "filter" ? "get" : "post"
+  plumbing := Object.keys(hidden).map((name: string) =>
+    `<input type="hidden"${attributes({ name: name, value: hidden[name] })}>`
+  ).join ""
+  footer := formFooter submit, actions, validation
+  content := if body is null then `<div class="rb-form-fields">${fields}</div>` else `<div class="rb-form-body">${body}</div>`
+  `<form class="rb-form rb-form--${variant}" method="${method}"` +
+    ` action="${escapeHtml(action)}"${attributes({ enctype: enctype })}>${plumbing}` +
+    content +
+    `${footer}</form>`
+
+// Options as value/label pairs, humanising a bare token so no select ever
+// shows one. Mirrors Primitives::Identity#normalise_options.
+function normaliseOptions(options: any): any[]
+  if Array.isArray options
+    return options.map((entry: any) => Array.isArray(entry) ? entry : [entry, enumLabel(entry)])
+  if options and typeof options is "object"
+    return Object.keys(options).map((key: string) => [key, options[key]])
+
+  throw new Error "this control needs options"
+
+// Derives a field's DOM id from its control name, unless +id+ overrides it: two
+// controls sharing a name (a repeated card, a row zipped by index out of a
+// parallel array) need distinct ids or the second one's label focuses the first.
+function fieldId(name: string, id: any = null): string
+  return String id if id?
+
+  `rb-field-${String(name).replace(/[^A-Za-z0-9_-]/g, "-")}`
+
+FIELD_INPUT_KINDS := { text: "text", number: "number", secret: "password", file: "file" }
+
+// A file input's value comes from what the reader picks, never from the
+// server, and a browser ignores a value attribute on one anyway.
+function fieldInput(name: string, type: string, value: any, enabled: boolean, id: any = null): string
+  `<input${attributes({
+    class: "rb-field-control", type: FIELD_INPUT_KINDS[type], id: fieldId(name, id), name: name,
+    value: (type is "file" ? null : value), disabled: (enabled ? null : true)
+  })}>`
+
+function fieldSelect(name: string, type: string, value: any, options: any, enabled: boolean, id: any = null): string
+  pairs := type is "toggle" ? TOGGLE_OPTIONS : normaliseOptions(options)
+  items := pairs.map(([option, optLabel]: any[]) =>
+    selected := String(option) is String(value ?? "") ? " selected" : ""
+    `<option value="${escapeHtml(option)}"${selected}>${escapeHtml(optLabel)}</option>`
+  ).join ""
+  `<select${attributes({
+    class: "rb-field-control", id: fieldId(name, id), name: name, disabled: (enabled ? null : true)
+  })}>${items}</select>`
+
+function fieldTextarea(name: string, type: string, value: any, enabled: boolean, id: any = null): string
+  `<textarea${attributes({
+    class: "rb-field-control", id: fieldId(name, id), name: name,
+    spellcheck: (type is "code" ? false : null), disabled: (enabled ? null : true)
+  })}>${escapeHtml(value)}</textarea>`
+
+function fieldGroup(name: string, kind: string, value: any, options: any, enabled: boolean, id: any = null): string
+  chosen := (Array.isArray(value) ? value : (value is null or value is undefined ? [] : [value])).map(String)
+  items := normaliseOptions(options).map(([option, optLabel]: any[], index: number) =>
+    optionId := `${fieldId(name, id)}-${index}`
+    `<label class="rb-field-option" for="${optionId}">` +
+      `<input${attributes({
+        type: kind, id: optionId, name: (kind is "checkbox" ? `${name}[]` : name), value: option,
+        checked: (chosen.includes(String(option)) ? true : null), disabled: (enabled ? null : true)
+      })}>${escapeHtml(optLabel)}</label>`
+  ).join ""
+  `<div class="rb-field-options" role="group">${items}</div>`
+
+function mappingListValue(fieldData: any, value: any): any
+  return value unless fieldData.type is "multiline" and Array.isArray value
+
+  value.map((item: any) => String(item)).join "\n"
+
+function mappingListRow(config: any, index: number, value: any, enabled: boolean): string
+  entry := value ? value : {}
+  prefix := `${config.name}[${index}]`
+  variant := config.entry_variant ?? "mapping"
+  kind := typeof entry is "string" ? "word" : "rule"
+  data := typeof entry is "object" and entry !== null ? entry : { pattern: entry }
+  kindField := if variant is "string_or_mapping"
+    field {
+      name: `${prefix}[_kind]`
+      label: "Entry type"
+      type: "select"
+      value: kind
+      size: "short"
+      options: [["word", "Word"], ["rule", "Rule"]]
+      enabled
+    }
+  else ""
+  entryFields := (config.entry_fields ?? []).map((entryField: any) =>
+    field {
+      name: `${prefix}[${entryField.name}]`
+      label: entryField.label
+      type: entryField.type
+      value: mappingListValue entryField, (data[entryField.name] ?? entryField.default ?? "")
+      size: entryField.size ?? "medium"
+      options: entryField.options ?? null
+      hint: entryField.hint ?? null
+      hint_wrap: config.hint_wrap ?? false
+      required: entryField.required ?? false
+      enabled
+    }
+  ).join ""
+  remove := if enabled
+    `<button type="button" class="rb-button rb-button--secondary rb-button--small" data-grant="${escapeHtml(config.action)}" data-mapping-list-remove>Remove</button>`
+  else ""
+  `<div class="rb-form-body" data-mapping-list-row data-mapping-list-index="${index}">` +
+    `<div class="rb-form-fields">${kindField}${entryFields}</div>` +
+    `<div class="rb-form-submit">${remove}</div></div>`
+
+function mappingListControl(name: string, value: any, opts: any, enabled: boolean): string
+  config := {
+    name
+    entry_fields: opts.entry_fields ?? []
+    entry_variant: opts.entry_variant ?? "mapping"
+    entry_presets: opts.entry_presets ?? []
+    action: requiredArgument(opts, "mapping_list_action")
+    hint_wrap: opts.hint_wrap ?? false
+  }
+  entries := Array.isArray(value) ? value : []
+  rows := entries.map((entry: any, index: number) => mappingListRow(config, index, entry, enabled)).join ""
+  add := if enabled
+    `<button type="button" class="rb-button rb-button--secondary" data-grant="${escapeHtml(config.action)}" data-mapping-list-add>Add entry</button>`
+  else ""
+  // A named preset is picked from a select rather than drawn as its own
+  // button: a button's own label comes from the shared verb lexicon, never a
+  // raw value, and a preset's own name is exactly that. Add preset reads
+  // whichever option is currently chosen and inserts a row through the same
+  // mappingListRow used everywhere else, pre-filled from it instead of blank
+  // (see editMappingList below).
+  presetOptions := config.entry_presets.map((preset: any, index: number) =>
+    `<option value="${index}" data-preset-name="${escapeHtml(preset.name)}" ` +
+      `data-preset-description="${escapeHtml(preset.description)}" data-preset-action="${escapeHtml(preset.action)}">` +
+      `${escapeHtml(preset.name)}</option>`
+  ).join ""
+  // The select and its own button are wrapped as one unit: they read as a
+  // pair rather than a third sibling of Add entry, and a narrow row can
+  // never wrap the button away from the value it commits.
+  presetPicker := if enabled and config.entry_presets.length > 0
+    `<span class="rb-mapping-preset">` +
+      `<select class="rb-field-control" data-mapping-list-preset-select>${presetOptions}</select>` +
+      `<button type="button" class="rb-button rb-button--secondary" ` +
+        `data-grant="${escapeHtml(config.action)}" data-mapping-list-preset-add>Add preset</button></span>`
+  else ""
+  `<div id="${escapeHtml(fieldId(name))}" data-mapping-list data-mapping-list-config="${escapeHtml(JSON.stringify(config))}">` +
+    `<div class="rb-form-body" data-mapping-list-rows>${rows}</div>` +
+    `<div class="rb-mapping-actions">${add}${presetPicker}</div></div>`
+
+function fieldControl(name: string, type: string, value: any, options: any, enabled: boolean, opts: any): string
+  id := opts.id ?? null
+  switch type
+    when "select", "toggle"
+      fieldSelect name, type, value, options, enabled, id
+    when "multiline", "code"
+      fieldTextarea name, type, value, enabled, id
+    when "choice"
+      fieldGroup name, "radio", value, options, enabled, id
+    when "checklist"
+      fieldGroup name, "checkbox", value, options, enabled, id
+    when "mapping-list"
+      mappingListControl name, value, opts, enabled
+    else
+      fieldInput name, type, value, enabled, id
+
+// Longer than the display limit is cut with the whole of it kept on hover,
+// which is the fallback a table cell already carries. tabindex reaches the
+// same text on a tap, since touch never triggers hover. wrap is for a form
+// with the room to read the whole of it instead.
+function fieldHint(hint: any, wrap: boolean = false): string
+  return "" if hint is null or hint is undefined
+
+  text := String hint
+  whole := wrap or text.length <= HINT_LIMIT
+  return `<p class="rb-field-hint">${escapeHtml(text)}</p>` if whole
+
+  cut := truncate text, HINT_LIMIT - 3
+  `<p class="rb-field-hint" title="${escapeHtml(text)}" tabindex="0">${escapeHtml(cut)}</p>`
+
+// 6. Field: one labelled control, the only way a control reaches a page.
+// Required is marked and optional is not, help text is an argument rather
+// than a stray paragraph, a select never shows the raw enum token, and the
+// hint sits after the control rather than above it, since hints of
+// different heights would leave no two controls in a form row level and put
+// the explanation before the thing it explains. +id+ overrides the DOM id
+// this would otherwise derive from +name+ alone, for a screen that repeats
+// the same name across several rows or cards and needs each one to focus
+// its own control. +hint_wrap+ draws the whole hint rather than cutting it
+// at HINT_LIMIT, for a screen where the hint is the only explanation there
+// is and hover is not a way to get the rest of it back.
+function field(opts: any): string
+  name := requiredArgument opts, "name"
+  fieldLabel := requiredArgument opts, "label"
+  type := opts.type ?? "text"
+  value := opts.value ?? null
+  size := opts.size ?? "medium"
+  options := opts.options ?? null
+  hint := opts.hint ?? null
+  hintWrap := opts.hint_wrap ?? false
+  required := opts.required ?? false
+  enabled := opts.enabled ?? true
+  id := opts.id ?? null
+  checkOneOf FIELD_TYPES, type, "field type"
+  checkOneOf FIELD_SIZES, size, "field size"
+
+  mark := required ? '<span class="rb-field-required" title="Required">*</span>' : ""
+  `<div class="rb-field rb-field--${size}">` +
+    `<label class="rb-field-label" for="${escapeHtml(fieldId(name, id))}">` +
+    `${escapeHtml(label(fieldLabel))}${mark}</label>` +
+    fieldControl(name, type, value, options, enabled, opts) +
+    fieldHint(hint, hintWrap) +
+    `</div>`
+
+// Add or remove a row in the typed mapping lists the feature config form
+// draws, Add preset being a second way to add one: mappingListRow draws the
+// same row either way, pre-filled from whichever entry_presets option the
+// select next to it currently holds rather than left blank. Delegation from
+// the runtime keeps this alive across a themed redraw.
+function editMappingList(target: any): boolean
+  control := target?.closest?(
+    "[data-mapping-list-add], [data-mapping-list-remove], [data-mapping-list-preset-add]"
+  )
+  return false unless control
+
+  row := control.closest "[data-mapping-list-row]"
+  if control.hasAttribute "data-mapping-list-remove"
+    row?.remove()
+    return true
+
+  list := control.closest "[data-mapping-list]"
+  rows := list?.querySelector "[data-mapping-list-rows]"
+  return true unless rows
+
+  config = JSON.parse(list.dataset.mappingListConfig ?? "{}")
+  indexes := Array.from(rows.querySelectorAll("[data-mapping-list-index]")).map((node: any) =>
+    Number(node.dataset.mappingListIndex)
+  )
+  index := Math.max(-1, ...indexes) + 1
+  entry := if control.hasAttribute "data-mapping-list-preset-add"
+    select := list?.querySelector "[data-mapping-list-preset-select]"
+    presetIndex := select ? Number(select.value) : -1
+    (config.entry_presets ?? [])[presetIndex] ?? {}
+  else
+    {}
+  rows.insertAdjacentHTML "beforeend", mappingListRow(config, index, entry, true)
+  rows.lastElementChild?.querySelector("input, select, textarea")?.focus()
+  true
+
+// 7. Button: takes the section's own "may" map and the action it spends
+// rather than a pre-computed boolean under a separately named grant. The
+// same string is the may lookup key and the emitted data-grant, so the two
+// cannot drift the way a hand maintained pair of vocabularies could.
+function destructiveConfirm(label: string, variant: string, confirm: any): any
+  return confirm unless variant is "destructive"
+
+  confirm ? confirm : `${label}? This cannot be undone.`
+
+function buttonAttributes(action: string, variant: string, size: string, live: boolean, permitted: boolean, confirm: any): string
+  attributes {
+    class: `rb-button rb-button--${variant}${size is "small" ? " rb-button--small" : ""}${live ? "" : " rb-button--flat"}`
+    "data-grant": action
+    "data-destructive": variant is "destructive" ? "true" : null
+    "data-confirm": (variant is "destructive" and live) ? confirm : null
+    "aria-disabled": live ? null : "true"
+    title: permitted ? null : "Read only: you cannot change this here."
+  }
+
+function buttonBody(text: string, variant: string): string
+  mark := variant is "destructive" ? '<span class="rb-button-mark" aria-hidden="true">!</span>' : ""
+  `${mark}${escapeHtml(label(text))}`
+
+// newTab leaves this page where it is, for a reference somebody follows from
+// the middle of unsaved work.
+function anchorButton(destination: string, shared: string, body: string, live: boolean, newTab: boolean): string
+  href := live ? ` href="${escapeHtml(destination)}"` : ""
+  window := (newTab and live) ? ' target="_blank" rel="noopener"' : ""
+  `<a${href}${window}${shared}${live ? "" : ' role="link"'}>${body}</a>`
+
+// formaction names a second target for the form this button sits in, for
+// the one shape a single Form cannot draw on its own: two submits posting
+// the same fields to two different routes (Save, and Test connection
+// against what is on screen rather than what is stored). Left unset, the
+// button posts to its form's own action, same as ever.
+function button(text: string, action: string, may: any, opts: any = {}): string
+  variant := opts.variant ?? "primary"
+  size := opts.size ?? "medium"
+  checkOneOf BUTTON_VARIANTS, variant, "button variant"
+  checkOneOf BUTTON_SIZES, size, "button size"
+  confirm := destructiveConfirm text, variant, opts.confirm ?? null
+  permitted := !!(may and may[action])
+  enabled := opts.enabled ?? true
+  live := enabled and permitted
+  shared := buttonAttributes action, variant, size, live, permitted, confirm
+  body := buttonBody text, variant
+  return anchorButton(opts.to, shared, body, live, opts.newTab ?? false) if opts.to
+
+  attrs := attributes {
+    type: "submit", name: opts.name ?? null, value: opts.value ?? null, formaction: opts.formaction ?? null
+  }
+  `<button${attrs}${shared}${live ? "" : " disabled"}>${body}</button>`
+
+// 8. Status, called state on the client the same reason Sinatra owns
+// +status+ on the Ruby side: a state pill whose tone comes from the state
+// rather than from the string, carrying a mark so it survives being read in
+// one colour.
+STATUS_MARKS := { good: "+", bad: "x", warn: "!", neutral: "·", unknown: "?" }
+
+function state(text: any, tone: string = "unknown"): string
+  checkOneOf STATUS_TONES, tone, "status tone"
+  `<span class="rb-status rb-status--${tone}">` +
+    `<span class="rb-status-mark" aria-hidden="true">${STATUS_MARKS[tone]}</span>` +
+    `${escapeHtml(text)}</span>`
+
+// 9. Tag. A label that carries no state: a platform, a kind, a matched word,
+// a maturity marker.
+function tag(text: any): string
+  `<span class="rb-tag">${escapeHtml(text)}</span>`
+
+// A run of Tags, which is all a list of them is.
+function tags(values: any): string
+  list := toArray values
+  return "" if list.length is 0
+
+  `<span class="rb-tags">${list.map(tag).join("")}</span>`
+
+// 10. KeyValues: label and formatted value pairs, every value going through
+// Format the same way a table cell does, which is where a raw second count
+// dies. pairs is [label, value, format] triples or one plain object of
+// label to value, the two shapes Ruby's normalise_pairs takes.
+function keyValueBody(raw: any, as: string): string
+  return tags toArray(raw).map((v: any) => duration(v)) if as is "durations"
+  return tags raw.map((item: any) => formatValue(item, as)) if Array.isArray raw
+
+  escapeHtml formatValue(raw, as)
+
+function normalisePairs(pairs: any): any[]
+  return Object.keys(pairs).map((key: string) => [key, pairs[key]]) if
+    pairs and typeof pairs is "object" and !Array.isArray(pairs)
+
+  toArray pairs
+
+function keyValues(pairs: any, variant: string = "stacked"): string
+  checkOneOf KEY_VALUES_VARIANTS, variant, "key values variant"
+  rendered := normalisePairs(pairs).map(([pairLabel, raw, as]: any[]) =>
+    `<div class="rb-kv-key">${escapeHtml(label(pairLabel))}</div>` +
+      `<div class="rb-kv-value">${keyValueBody(raw, as ?? "text")}</div>`
+  ).join ""
+  return "" if rendered is ""
+
+  `<div class="rb-kv rb-kv--${variant}">${rendered}</div>`
+
+// 11. StatRow. A detail is optional, so existing value and caption pairs keep
+// their exact two-line markup.
+function statCell(pair: any[]): string
+  value := pair[0]
+  caption := pair[1]
+  detail := pair[2]
+  if String(value ?? "").includes "<"
+    throw new Error "a stat value is a number, not a control"
+
+  `<div class="rb-stat"><div class="rb-stat-value">${escapeHtml(value)}</div>` +
+    `<div class="rb-stat-label">${escapeHtml(caption)}</div>` +
+    (if detail is null or detail is undefined or detail is "" then "" else
+      `<div class="rb-stat-detail">${escapeHtml(detail)}</div>`) +
+    `</div>`
+
+function statRow(stats: any[]): string
+  `<div class="rb-stats">${(stats ?? []).map(statCell).join("")}</div>`
+
+// 12. Chart is in ./chart.civet. It composes from this file rather than
+// sitting beside it: its empty state is Notice's empty tone, its labels are
+// cut by Format.truncate, and everything it interpolates goes through
+// escapeHtml, the same as every emitter above.
+
+// 13. Code. Read-only code, inline or as a block.
+function code(text: any, variant: string = "block"): string
+  checkOneOf CODE_VARIANTS, variant, "code variant"
+  tagName := variant is "inline" ? "code" : "pre"
+  `<${tagName} class="rb-code rb-code--${variant}">${escapeHtml(text)}</${tagName}>`
+
+// 14. TabLinks: an in-page filter expressed as links, taking [href, label,
+// key] triples and the key that is showing. One control rather than the two
+// identical helpers it replaces.
+function tabLinks(links: any, current: any): string
+  throw new Error "missing keyword: :current" if current is undefined
+
+  items := toArray(links).map(([href, text, key]: any[]) =>
+    marker := String(key ?? "") is String(current ?? "")
+    `<a class="rb-tab${marker ? " rb-tab--current" : ""}" href="${escapeHtml(href)}"` +
+      `${marker ? ' aria-current="page"' : ""}>${escapeHtml(text)}</a>`
+  ).join ""
+  `<nav class="rb-tabs">${items}</nav>`
+
+// 15. Prose: a rendered markdown document (headings, links, tables,
+// blockquotes, fenced code), the one emitter handed markup rather than
+// text, so it carries a check instead of trust. By the time a document
+// crosses the internal surface it is just a string, so the same element and
+// attribute scan Ruby's kramdown parser already ran gets run again here
+// rather than assumed; the two lists below are the Ruby ones.
+PROSE_DOCUMENTS := ["readme", "scripting", "licence"]
+
+PROSE_ABSENT := {
+  readme: "README.md is not shipped alongside this build, so there is nothing to show."
+  scripting: "The scripting reference is not shipped alongside this build, so there is nothing to show."
+  licence: "LICENSE.MD is not shipped alongside this build, so there is nothing to show. " +
+    "The base licence is published at polyformproject.org/licenses/strict/1.0.0."
+}
+
+PROSE_TAGS := new Set ["a", "blockquote", "br", "code", "dd", "del", "dl", "dt", "em", "h1", "h2",
+                       "h3", "h4", "h5", "h6", "hr", "img", "li", "ol", "p", "pre", "strong", "sub",
+                       "sup", "table", "tbody", "td", "th", "thead", "tr", "ul"]
+
+// No style, no target, no rel, no data-anything, no on-anything: a document
+// describes itself and never reaches for behaviour on the page around it.
+PROSE_ATTRIBUTES := new Set ["alt", "class", "colspan", "dir", "height", "href", "id", "lang",
+                             "rowspan", "scope", "src", "start", "title", "width"]
+
+// class is a fenced block's language and nothing else, so a document cannot
+// wear a primitive's class name and be styled as one.
+PROSE_VALUES := {
+  class: /^language-[a-z0-9+#-]+$/
+  href: /^(?:https?:\/\/|mailto:|[#\/])/
+  src: /^(?:https?:\/\/|data:image\/)/
+}
+
+// One element, whole. An element that does not parse exactly this way is
+// refused rather than read as far as it goes, which is what turns a value
+// carrying its own ">" into a refusal instead of a half-read tag.
+PROSE_ELEMENT := /^<(\/?)([a-z][a-z0-9]*)((?:\s+[a-zA-Z][a-zA-Z0-9-]*(?:="[^"<>]*")?)*)\s*\/?>$/
+PROSE_ATTRIBUTE := /([a-zA-Z][a-zA-Z0-9-]*)(?:="([^"<>]*)")?/g
+
+function checkProseAttribute(tagName: string, name: string, value: any): void
+  unless PROSE_ATTRIBUTES.has name
+    throw new Error `rendered markdown carries ${name}= on a <${tagName}>, which a document may not set`
+
+  pattern := PROSE_VALUES[name]
+  return unless pattern
+
+  tokens := String(value ?? "").split(/\s+/).filter (token: string) => token !== ""
+  return if tokens.length > 0 and tokens.every((token: string) => pattern.test token)
+
+  throw new Error `rendered markdown carries ${name}="${value}" on a <${tagName}>, which this will not draw`
+
+function checkProseElement(element: string): void
+  match := PROSE_ELEMENT.exec element
+  unless match
+    throw new Error `rendered markdown carries ${JSON.stringify(element)}, which is not an element`
+
+  name := match[2]
+  unless PROSE_TAGS.has name
+    throw new Error `rendered markdown carries a <${name}>, outside the document vocabulary`
+  return if match[1] is "/"
+
+  for found of match[3].matchAll(PROSE_ATTRIBUTE)
+    checkProseAttribute name, found[1], found[2]
+
+// The markup back, once every element in it is one this draws.
+function verifiedProse(markup: any): string
+  text := String markup ?? ""
+  left := text.replace /<[^>]*>/g, (element: string) =>
+    checkProseElement element
+    ""
+  if left.includes "<"
+    throw new Error "rendered markdown carries a stray < outside any element"
+
+  text
+
+function prose(document: string, markup: any): string
+  checkOneOf PROSE_DOCUMENTS, document, "prose document"
+  return notice(PROSE_ABSENT[document], "empty") if markup is null or markup is undefined
+
+  `<div class="rb-prose">${verifiedProse(markup)}</div>`
+
+export {
+  escapeHtml, attributes, Format, actionsRow,
+  page, section, notice, table, form, field, button, editMappingList, state, tag, tags, keyValues, statRow,
+  code, tabLinks, prose, toggleSummary
+}

@@ -1,0 +1,259 @@
+<h1>Integrations</h1>
+
+<div class="card">
+  <p class="muted">
+    An <strong>integration</strong> is a connection to an outside service the whole deployment shares: the
+    endpoint, the credential, and any other setting that has to be the same everywhere. It is
+    <strong>deployment-wide, not per community</strong>, and administrator only.
+  </p>
+  <p class="muted">
+    Whether a community actually uses an integration is a separate switch, on that community's own feature
+    catalog. Turning a connection on here only makes it available; a community still opts in for itself, and
+    turning it off here takes it away from every community at once.
+  </p>
+  <p class="muted">
+    <strong>No key is ever shown here once it is set.</strong> A key field shows whether one is stored and
+    lets it be replaced, the way a password field behaves.
+  </p>
+</div>
+
+<%# Both connections are the same card, so it is written once and the copy that
+    differs between them is branched inside it. %>
+<% titles = { "libretranslate" => "LibreTranslate", "openarc" => "OpenArc" } %>
+<% placeholders = { "libretranslate" => "https://libretranslate.example.org",
+                    "openarc" => "http://openarc:8000/v1" } %>
+<% @integrations.each do |integration| %>
+  <% name = integration.name %>
+  <% next unless titles.key?(name) %>
+  <%# The model card says whether the endpoint answered when this page read it,
+      not merely whether a URL is stored: a configured server with no worker
+      loaded reads as healthy until a job fails, which is how every dependent
+      feature once went dead with nothing on the page to show it. %>
+  <% state = if presence(integration.url).nil?
+               ["off", "not configured"]
+             elsif name != "openarc"
+               ["on", "connected"]
+             elsif @openarc[:reachable]
+               ["on", "answering"]
+             else
+               ["off", "not answering"]
+             end %>
+  <div class="card">
+    <h2>
+      <%= h(titles[name]) %>
+      <span class="pill <%= state.first %>">
+        <%= state.last %>
+      </span>
+    </h2>
+    <p class="muted">
+      <% if name == "libretranslate" %>
+        Translates a room's messages for a peer room in another language. Once this connection works, switch
+        translation on for a community from that community's own Features page.
+      <% else %>
+        Provides the local text endpoint used by room summaries and semantic FAQ matching. Once this
+        connection works, each community still turns those room features on for itself.
+      <% end %>
+    </p>
+    <form method="post" action="<%= request.script_name %>/integrations/<%= h(name) %>">
+      <div class="cfg-field">
+        <label>Endpoint URL</label>
+        <input type="text" name="url" placeholder="<%= h(placeholders[name]) %>"
+               value="<%= h(integration.url) %>">
+        <% if name == "openarc" %>
+          <p class="note">The endpoint must provide <code>/v1/models</code> and <code>/v1/chat/completions</code>.</p>
+        <% end %>
+      </div>
+      <div class="cfg-field">
+        <label>API key</label>
+        <input type="password" name="api_key" value="" autocomplete="off">
+        <p class="note">
+          <span class="pill <%= integration.api_key ? "on" : "off" %>">
+            <%= integration.api_key ? "key stored" : "no key stored" %>
+          </span>
+          Leave this blank to keep whatever key is already stored. Type a new one to replace it.
+        </p>
+      </div>
+      <% if name == "openarc" %>
+        <div class="cfg-field">
+          <label>Model</label>
+          <% if @openarc[:available].empty? %>
+            <input type="text" name="model" value="<%= h(@openarc[:chosen]) %>">
+            <p class="note">
+              <% if @openarc[:error] %>
+                Could not read this server's model list, so nothing can be offered here:
+                <%= h(@openarc[:error]) %>
+              <% elsif presence(integration.url) %>
+                <strong>This OpenArc server has no models loaded</strong>, so there is nothing to
+                offer here. A model has to be loaded on the server before it can be picked.
+              <% else %>
+                Save an endpoint URL first, and the models loaded on that server show up here as a
+                list.
+              <% end %>
+              Left blank, <code><%= h(Rubotty::OpenArc::Settings::DEFAULT_MODEL) %></code> is used.
+            </p>
+          <% else %>
+            <select name="model">
+              <option value="">Use the built-in default</option>
+              <% @openarc[:available].each do |model| %>
+                <option value="<%= h(model) %>"<%= " selected" if @openarc[:chosen] == model %>>
+                  <%= h(model) %>
+                </option>
+              <% end %>
+            </select>
+            <p class="note">
+              Read from this server's <code>/v1/models</code>, so these are the models it has loaded
+              right now. A model registered there but not loaded is not on this list. Left on the
+              default, <code><%= h(Rubotty::OpenArc::Settings::DEFAULT_MODEL) %></code> is used.
+            </p>
+          <% end %>
+          <% if @openarc[:missing] %>
+            <p class="note error">
+              <strong>The stored model is not loaded on this server.</strong>
+              <code><%= h(@openarc[:effective]) %></code> is what room summaries and semantic FAQ
+              matching ask for, and this server does not have it loaded, so both would fail. Pick
+              one from the list above and save, or load that one on the server.
+            </p>
+          <% end %>
+        </div>
+      <% end %>
+      <% if name == "libretranslate" %>
+        <% config = integration.json_value(:config) %>
+        <div class="cfg-field">
+          <label>Allowed language pairs</label>
+          <textarea name="allowed_pairs" rows="3"
+                    placeholder="en:pt,pt:en"><%= h(config["allowed_pairs"]) %></textarea>
+          <p class="note">
+            Comma separated <code>source:target</code> pairs, e.g. <code>en:pt,pt:en</code>. Left empty,
+            every pair this instance can translate is allowed.
+          </p>
+        </div>
+      <% end %>
+      <div class="row" style="margin-top:0.6rem;">
+        <div><button type="submit">Save</button></div>
+        <div>
+          <button type="submit" class="secondary"
+                  formaction="<%= request.script_name %>/integrations/<%= h(name) %>/test">
+            Test connection
+          </button>
+        </div>
+      </div>
+      <p class="note">
+        <% if name == "libretranslate" %>
+          Test connection tries the URL and key above exactly as typed (blank still means "the stored key"),
+          without saving anything, so a mistake is caught here instead of showing up as untranslated messages
+          later.
+        <% else %>
+          Test connection tries the URL, key and model above exactly as typed, without saving
+          anything, and says whether the server really has that model rather than only whether it
+          answered.
+        <% end %>
+      </p>
+    </form>
+    <% if name == "openarc" %>
+      <h3>Loaded on this server</h3>
+      <p class="muted">
+        Read from <code>/openarc/status</code>, which reports more than the model list above: what
+        is loaded, its type and engine, and which device it sits on.
+      </p>
+      <% if @openarc[:status_error] %>
+        <p class="note">Could not read what is loaded: <%= h(@openarc[:status_error]) %></p>
+      <% elsif @openarc[:status].nil? || @openarc[:status].empty? %>
+        <p class="note">Nothing is loaded here yet, or the connection has not been saved.</p>
+      <% else %>
+        <table>
+          <tr><th>Model</th><th>Type</th><th>Engine</th><th>Device</th></tr>
+          <% @openarc[:status].each do |entry| %>
+            <tr>
+              <td><%= h(entry["model_name"]) %></td>
+              <td><%= h(entry["model_type"]) %></td>
+              <td><%= h(entry["engine"]) %></td>
+              <td><%= h(entry["device"]) %></td>
+            </tr>
+          <% end %>
+        </table>
+      <% end %>
+
+      <h3>When this server drops the model</h3>
+      <p class="muted">
+        OpenArc unloads a model when an inference fails, and holds none at all after a restart. A
+        completion that finds the model gone loads it again from what was kept here and asks once
+        more, so a feature waits seconds rather than until somebody notices.
+      </p>
+      <% if @openarc[:reload] %>
+        <p class="note">
+          Kept: <code><%= h(@openarc[:reload]["model_name"]) %></code> from
+          <code><%= h(@openarc[:reload]["model_path"]) %></code> on
+          <code><%= h(@openarc[:reload]["device"]) %></code>.
+          <% unless @openarc[:reloadable] %>
+            The model chosen above is <code><%= h(@openarc[:effective]) %></code>, and while the two
+            disagree nothing is put back, since reloading a model nothing asks for would leave the
+            failure exactly where it was.
+          <% end %>
+        </p>
+        <form method="post" action="<%= request.script_name %>/integrations/openarc/forget">
+          <button type="submit">Forget this</button>
+        </form>
+      <% else %>
+        <p class="note">
+          Nothing is kept yet. Loading a model below keeps how it was done, so the same load can be
+          replayed the next time this server is found without it.
+        </p>
+      <% end %>
+
+      <h3>Load a model onto this server</h3>
+      <p class="muted">
+        Registers and loads a model on the OpenArc server in one call. The path only means
+        something on that server's own filesystem, and a large model can take several minutes to
+        load: this waits for OpenArc's own answer rather than guessing at when it is done.
+      </p>
+      <% if presence(integration.url) %>
+        <form method="post" action="<%= request.script_name %>/integrations/openarc/load">
+          <div class="cfg-field">
+            <label>Model path</label>
+            <input type="text" name="model_path" placeholder="/models/Qwen3-4B-int4">
+            <p class="note">A path on the OpenArc server itself, not on this machine.</p>
+          </div>
+          <div class="cfg-field">
+            <label>Model name</label>
+            <input type="text" name="model_name" placeholder="Qwen3-4B-int4">
+          </div>
+          <div class="cfg-field">
+            <label>Model type</label>
+            <select name="model_type">
+              <option value="">Choose one</option>
+              <% Rubotty::OpenArc::Client::MODEL_TYPES.each do |type| %>
+                <option value="<%= h(type) %>"><%= h(type) %></option>
+              <% end %>
+            </select>
+          </div>
+          <div class="cfg-field">
+            <label>Engine</label>
+            <select name="engine">
+              <option value="">Choose one</option>
+              <% Rubotty::OpenArc::Client::ENGINES.each do |engine| %>
+                <option value="<%= h(engine) %>"><%= h(engine) %></option>
+              <% end %>
+            </select>
+          </div>
+          <div class="cfg-field">
+            <label>Device</label>
+            <input type="text" name="device" placeholder="CPU">
+          </div>
+          <div class="cfg-field">
+            <label>Cache directory (optional)</label>
+            <input type="text" name="cache_dir">
+          </div>
+          <div class="row" style="margin-top:0.6rem;">
+            <div><button type="submit">Load model</button></div>
+          </div>
+          <p class="note">
+            This can run for several minutes on a large model. Leave this tab open: the page
+            redirects back here with OpenArc's own answer once it is done.
+          </p>
+        </form>
+      <% else %>
+        <p class="note">Save an endpoint URL above first.</p>
+      <% end %>
+    <% end %>
+  </div>
+<% end %>

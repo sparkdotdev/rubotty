@@ -1,0 +1,32 @@
+<%
+  reader = Rubotty::Dashboard::DebugLogs
+  filters = field(
+    name: "source", label: "Source", type: :select, value: @source, size: :short,
+    options: [["web", "Web process"], ["bot", "Bot process"], ["all", "Both"]],
+    hint: "The bot is where moderation and the model-backed checks run."
+  ) + field(
+    name: "level", label: "Level", type: :select, value: @level, size: :short,
+    options: [["", "Any"], %w[debug Debug], %w[info Info], %w[warn Warning],
+              %w[error Error], %w[fatal Fatal]],
+    hint: "This level and anything more severe."
+  ) + field(
+    name: "limit", label: "Lines", type: :number, value: @limit, size: :short,
+    hint: "At most #{reader::MAX_LIMIT}, which is all either process keeps."
+  )
+  lines = table(
+    columns: [{ key: "time", header: "When" }, { key: "source", header: "Source" },
+              { key: "level", header: "Level" }, { key: "text", header: "Line" }],
+    rows: @entries, empty: "No log lines with these filters."
+  )
+  unreadable = @errors.map { |source, reason| notice("#{source}: #{reason}", tone: :warning) }.join
+%>
+<%= page(
+      title: "Logs",
+      lede: "Recent lines from each process, kept in memory only, so a restart clears them.",
+      sections: section(
+        title: "Filter",
+        body: form(action: url("/logs"), fields: filters, variant: :filter,
+                   submit: button("Filter", action: :view_logs,
+                                  community: Rubotty::Dashboard::Role::DEPLOYMENT))
+      ) + section(title: "Lines", body: unreadable + lines)
+    ) %>

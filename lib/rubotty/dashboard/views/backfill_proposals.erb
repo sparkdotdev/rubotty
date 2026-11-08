@@ -1,0 +1,39 @@
+<h1>Backfill proposals</h1>
+
+<div class="card muted">
+  What a boot-time sweep found missing and held back instead of sending, because the gap was
+  larger than a quiet restart should ever recover on its own. Opening a row shows the messages it
+  would send: the author, when it was said, and enough of it to recognise. Accepting relays that
+  exact list, one message a second, through whichever bot process is currently running; nothing is
+  recomputed at the moment you click.
+  <br><br>
+  Watch the <strong>ours, skipped</strong> number first. It is how many of the fetched messages the
+  sweep decided were already our own relayed copies. A zero there on a channel that has bridged
+  before means the ownership check is not doing its job right now, and nothing should be accepted
+  until that is fixed.
+  <br><br>
+  A preview is kept only for proposals still waiting on a decision, the same short-lived exception
+  PRIVACY.md documents for the live room preview: it is pruned once the proposal is decided or
+  expires, whether or not anyone looked.
+</div>
+
+<h2>Waiting on a decision</h2>
+<%= backfill_proposals_table(@pending, communities: @communities, state: :pending,
+                             empty: "Nothing is waiting on a decision.") %>
+
+<% if @awaiting_relay.any? %>
+  <h2>Accepted, not yet confirmed sent</h2>
+  <div class="card muted">
+    Accepted here, but the bot has not confirmed the whole list went out, either because it is
+    still working through the pace or because it could not be reached. Retry asks it again; that is
+    safe to press more than once, since the bot skips anything it already relayed.
+  </div>
+  <%= backfill_proposals_table(@awaiting_relay, communities: @communities, state: :awaiting_relay,
+                               empty: "") %>
+<% end %>
+
+<% if @expired.any? %>
+  <h2>Expired</h2>
+  <div class="card muted">Nobody decided in time. A fresh sweep proposes the channel again if the gap is still there.</div>
+  <%= backfill_proposals_table(@expired, communities: @communities, state: :expired, empty: "") %>
+<% end %>

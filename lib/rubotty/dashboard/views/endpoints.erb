@@ -1,0 +1,53 @@
+<h1><%= h(@community.name) %>: script endpoints</h1>
+
+<div class="card">
+  <h2>Script endpoints</h2>
+  <p class="muted">
+    An endpoint is a web address you give a name to. A script can then call that name with
+    <code>rubotty.async_http</code> and never knows the address, the API key, or anything else you put
+    here. That is the point: you decide what this community can reach out to, and somebody writing a
+    rule cannot widen it.
+  </p>
+  <p class="muted">
+    Headers are where a key belongs. They are sent with every request and are never shown to a script,
+    never in a reply, and never in a script trace.
+  </p>
+</div>
+
+<div class="card">
+  <a href="<%= url("/communities/#{@community.slug}/endpoints/new") %>"><button type="button">Add endpoint</button></a>
+</div>
+
+<% if @endpoints.empty? %>
+  <div class="card muted">
+    No script endpoints yet, so <code>rubotty.async_http</code> has nothing to call. Add one and a script can
+    reach it by name.
+  </div>
+<% else %>
+  <div class="card">
+    <table>
+      <thead><tr><th>Name</th><th>Method</th><th>Address</th><th>State</th><th></th></tr></thead>
+      <tbody>
+        <% @endpoints.each do |endpoint| %>
+          <tr>
+            <td>
+              <a href="<%= url("/communities/#{@community.slug}/endpoints/#{endpoint.id}") %>"><%= h(endpoint.name) %></a>
+              <% if endpoint.description.to_s != "" %>
+                <div class="muted"><%= h(endpoint.description) %></div>
+              <% end %>
+            </td>
+            <td><code><%= h(endpoint.http_method) %></code></td>
+            <td class="muted"><%= h(endpoint.url) %></td>
+            <td><span class="pill <%= endpoint.enabled ? "on" : "off" %>"><%= endpoint.enabled ? "on" : "off" %></span></td>
+            <td>
+              <form class="inline" method="post"
+                    action="<%= url("/communities/#{@community.slug}/endpoints/#{endpoint.id}/delete") %>">
+                <%= act_button("Delete", :manage_endpoints, community: @community, style: "danger") %>
+              </form>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>

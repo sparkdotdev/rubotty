@@ -1,0 +1,25 @@
+<%# One typed control for a scalar schema field, keyed off an explicit %>
+<%# +name+ rather than always +field.name+, so a mapping-list row can reuse %>
+<%# it under a bracketed name like "entries[0][pattern]". %>
+<% if field.type == :boolean %>
+  <input type="hidden" name="<%= h(name) %>" value="false">
+  <input type="checkbox" name="<%= h(name) %>" value="true" <%= value ? "checked" : "" %>> on
+<% elsif field.one_of %>
+  <select name="<%= h(name) %>">
+    <% field.one_of.each do |option| %>
+      <option value="<%= h(option) %>" <%= value.to_s == option.to_s ? "selected" : "" %>><%= h(Rubotty::Dashboard::Primitives::Format.enum_label(option)) %></option>
+    <% end %>
+  </select>
+<% elsif field.type == :duration %>
+  <input type="text" name="<%= h(name) %>" value="<%= h(value) %>" placeholder="e.g. 24h, 90m, or a plain number of seconds">
+<% elsif %i[integer float].include?(field.type) %>
+  <%# Bounds off the schema, so this form and the themed one offer the same scale. %>
+  <input type="number"<%= Rubotty::Dashboard::Primitives.attributes(
+    min: field.range&.first, max: field.range&.last,
+    step: field.step || (field.type == :float ? "any" : nil)
+  ) %> name="<%= h(name) %>" value="<%= h(value) %>">
+<% elsif field.multiline %>
+  <textarea name="<%= h(name) %>" rows="4"><%= h(value) %></textarea>
+<% else %>
+  <input type="text" name="<%= h(name) %>" value="<%= h(value) %>">
+<% end %>

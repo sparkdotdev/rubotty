@@ -1,0 +1,123 @@
+<h1>API keys</h1>
+
+<div class="card">
+  <p class="muted">
+    An <strong>API key</strong> is a bearer credential the REST admin API authenticates requests against.
+    A <strong>developer</strong> key is scoped to one community: most reads and writes within it. An
+    <strong>administrator</strong> key is global and spans every community, with full access everywhere.
+  </p>
+  <p class="muted">
+    <strong>The raw key is shown exactly once, right after you issue it.</strong> Only its digest is ever
+    stored, so if you lose it, the only way back in is to revoke it here and issue a new one.
+  </p>
+</div>
+
+<% if @issued_token %>
+  <div class="card">
+    <h2>API key for <%= h(@issued_label) %></h2>
+    <p class="muted">Copy this now. It is shown once and never stored in full.</p>
+    <input type="text" readonly value="<%= h(redact_secret(@issued_token)) %>" style="width:100%;"
+           onclick="this.select()">
+  </div>
+<% end %>
+
+<div class="card">
+  <h2>Issue a new key</h2>
+  <form method="post" action="<%= request.script_name %>/api-keys" id="new-api-key-form">
+    <div class="row">
+      <div>
+        <label>Scope</label>
+        <select name="scope" id="api-key-scope">
+          <option value="developer">developer (one community)</option>
+          <option value="administrator">administrator (global)</option>
+        </select>
+      </div>
+      <div id="api-key-community-field">
+        <label>Community</label>
+        <select name="community">
+          <% @communities.each do |community| %>
+            <option value="<%= h(community.slug) %>"><%= h(community.slug) %></option>
+          <% end %>
+        </select>
+      </div>
+      <div>
+        <label>Label</label>
+        <input type="text" name="label" placeholder="Discord relay bot" value="">
+      </div>
+      <div id="api-key-platform-account-field">
+        <label>Platform account (optional)</label>
+        <input type="text" name="platform_account" placeholder="e.g. our-support-bot"
+               list="api-wrapper-account-names">
+        <% if @api_wrapper_account_names&.any? %>
+          <datalist id="api-wrapper-account-names">
+            <% @api_wrapper_account_names.each do |name| %><option value="<%= h(name) %>"><% end %>
+          </datalist>
+        <% end %>
+      </div>
+      <div><button type="submit">Issue key</button></div>
+    </div>
+  </form>
+  <p class="note">An administrator key ignores the community field; it is never scoped to one.</p>
+  <p class="note">
+    Leave platform account blank for an ordinary key. Name one of the api_wrapper accounts on the
+    Accounts page to scope this key to that one remote integration instead: it will only ever
+    authenticate as that account's own /bridge routes, never the rest of the community's API.
+  </p>
+</div>
+
+<script>
+  (function () {
+    var scope = document.getElementById("api-key-scope");
+    var communityField = document.getElementById("api-key-community-field");
+    var platformAccountField = document.getElementById("api-key-platform-account-field");
+    if (!scope || !communityField) return;
+    function sync() {
+      var developer = scope.value === "developer";
+      communityField.style.display = developer ? "" : "none";
+      if (platformAccountField) platformAccountField.style.display = developer ? "" : "none";
+    }
+    scope.addEventListener("change", sync);
+    sync();
+  })();
+</script>
+
+<% if @api_keys.empty? %>
+  <div class="card muted">No API keys yet.</div>
+<% else %>
+  <table>
+    <thead>
+      <tr>
+        <th>Scope</th><th>Community</th><th>Platform account</th><th>Label</th><th>Created by</th>
+        <th>Last used</th><th>Status</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @api_keys.each do |entry| %>
+        <% key = entry[:row] %>
+        <tr>
+          <td><%= h(key.scope) %></td>
+          <td><%= entry[:community] ? h(entry[:community].slug) : "(global)" %></td>
+          <td><%= key.platform_account ? h(key.platform_account) : "-" %></td>
+          <td><%= h(key.label) %></td>
+          <td><%= h(key.created_by) %></td>
+          <td><%= key.last_used_at ? h(key.last_used_at) : "never" %></td>
+          <td>
+            <% if key.revoked_at %>
+              <span class="pill off">revoked</span>
+            <% else %>
+              <span class="pill on">live</span>
+            <% end %>
+          </td>
+          <td>
+            <% unless key.revoked_at %>
+              <form class="inline" method="post"
+                    action="<%= request.script_name %>/api-keys/<%= h(key.public_id) %>/revoke">
+                <button class="danger" type="submit">Revoke</button>
+              </form>
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>

@@ -1,0 +1,3990 @@
+// The screens: one renderer per themed section, composed out of the shared
+// emitters in ./primitives.civet. These moved out of each theme's own
+// index.civet, since composing them is theme-independent work, and four
+// copies of the same renderers was the same drift already killed at the
+// primitive level, just moved up one.
+//
+// screens() at the bottom binds these renderers to the dashboard mount.
+
+import {
+  escapeHtml, Format, page, section, notice, table, form, field, button,
+  state as statusPill, tag, keyValues, statRow, tabLinks, prose, actionsRow, code, toggleSummary
+} from "./primitives.civet"
+import { chart } from "./chart.civet"
+import { triggerSummary } from "./script-triggers.civet"
+
+// A submit or navigating Button, spending +action+ against the section's own
+// "may" map. Thin, so a call site never has to remember which primitive it is
+// drawing.
+function act(text: string, action: string, may: any, opts: any = {}): string
+  button text, action, may, opts
+
+// A table earns the broad page frame rather than having individual screens
+// name a width. The table itself still owns horizontal overflow on a narrow
+// viewport; this only gives dense columns the room that is available.
+function tablePage(opts: any): string
+  page {
+    title: opts.title
+    lede: opts.lede ?? null
+    actions: opts.actions ?? null
+    sections: opts.sections ?? ""
+    variant: "wide"
+  }
+
+// A lone mutating Button still draws through Form's action variant. This keeps
+// an action beside a table row distinct from an edit form without any screen
+// inventing its own form markup.
+function post(target: string, control: string): string
+  form { action: target, variant: "action", submit: control }
+
+// The one Help disclosure a screen gets, mirroring the app's own
+// help_disclosure: the background, the alpha policy and the reference prose
+// somebody reads once, folded shut beside the controls they came to use. What
+// a control does to state, what it risks and what permission it spends stays
+// beside that control, since none of that is background.
+//
+// opts is { title, paragraphs, action, may, reference: [label, href] }.
+function helpSection(opts: any): string
+  paragraphs := opts.paragraphs ?? []
+  reference := opts.reference ?? null
+  body .= paragraphs.map((text: string) => notice(text, "info")).join ""
+  body += act(reference[0], opts.action, opts.may, variant: "secondary", to: reference[1], newTab: true) if reference
+
+  section { title: opts.title, variant: "collapsible", body: body }
+
+// The scope selector Features and its config editor share, a Field wrapped in
+// a filter Form so choosing a room submits GET rather than a client-side
+// redraw the router would then have to know how to do.
+function scopeField(scope: string, scopes: any[]): string
+  field
+    name: "scope"
+    label: "Scope"
+    type: "select"
+    value: scope
+    size: "short"
+    options: (scopes ?? []).map((entry: any) => [entry.value, entry.label])
+
+function scopeFilter(action: string, scope: string, scopes: any[], may: any): string
+  form
+    action: action
+    variant: "filter"
+    fields: scopeField(scope, scopes)
+    submit: button("View", "view_community", may, variant: "secondary")
+
+// Overview: the community landing page, five counts and a start/stop.
+
+// The facts under the title, read as a sentence rather than as a field name
+// stapled to its value: the lede was "Slug sample." under a title that was
+// already the community.
+function communityFacts(community: any): string
+  parts .= [community.slug]
+  parts.push `created ${Format.timestamp(community.created_at)}` if community.created_at
+  parts.join ", "
+
+function renderOverview(data: any, base: string): string
+  community := data.community
+  counts := data.counts
+  may := data.may ?? {}
+  name := community.name || community.slug
+  active := community.status is "active"
+
+  // Status left out of the row on purpose: a stat tile sets its value at the
+  // scale a count wants, so a word in one reads as a number.
+  stats := statRow [
+    [counts.connections, "platform connections", "for this community"]
+    [counts.channels, "channels", "attached to a platform"]
+    [counts.rooms, "rooms", "bridge groupings"]
+    [counts.endpoints, "endpoints", "outbound script calls"]
+    [counts.operators, "operators", "can manage this community"]
+    [counts.pending_operator_requests, "pending requests", "awaiting review"]
+    [counts.features, "feature settings", "configured here"]
+  ]
+  statusPillHtml := statusPill (active ? "Active" : "Suspended"), (active ? "good" : "neutral")
+
+  lifecycleNotice := notice(
+    "A stopped (suspended) community stays claimed but goes quiet: its channels stop " +
+      "resolving so the bot relays nothing, without leaving the space."
+    "info"
+  )
+  action := active ? "stop" : "start"
+  lifecycleButton := act(
+    active ? "Stop community" : "Start community", "manage_lifecycle", may
+    variant: active ? "secondary" : "primary"
+  )
+  target := `${base}/communities/${encodeURIComponent(community.slug)}/${action}`
+
+  // The plain variant, since a stat grid carries no heading of its own and the
+  // Ruby Section primitive raises ArgumentError on a nil title under the
+  // default one.
+  statsSection := section { variant: "plain", body: stats }
+
+  // The pill and the button that spends it live in the page's own actions
+  // slot now, on the title row the mockup draws them on, rather than pushed
+  // down into their own card. Lifecycle keeps the explanation of what
+  // stopping a community actually does, since that is still worth a section
+  // of its own; the control it used to hold moved out from under it.
+  lifecycleSection := section { title: "Lifecycle", body: lifecycleNotice }
+
+  page {
+    title: name
+    lede: communityFacts(community)
+    actions: post(target, statusPillHtml + lifecycleButton)
+    sections: statsSection + lifecycleSection
+  }
+
+// Rooms: one row per channel. A channel's membership, its name, and whether
+// that name is pending are each facts on the row, so there is no second board
+// whose presence makes an ordinary unroomed channel look like a different
+// kind of record.
+
+function roomFilterLinks(base: string, slug: string, counts: any, current: string): string
+  filters := [
+    ["all", "All"]
+    ["unroomed", "Needs a room"]
+    ["unnamed", "Unnamed"]
+    ["suggested", "Awaiting approval"]
+  ]
+  links := filters.filter(([key]: any[]) => Number(counts?.[key] ?? 0) > 0).map(([key, label]: any[]) =>
+    [`${base}/communities/${encodeURIComponent(slug)}/rooms${key is "all" ? "" : `?state=${key}`}`,
+     `${label} (${counts[key]})`, key]
+  )
+  return "" if links.length is 0
+
+  tabLinks links, current
+
+function renderRooms(data: any, base: string): string
+  community := data.community
+  slug := encodeURIComponent community.slug
+  may := data.may ?? {}
+  rows := data.channels ?? []
+  rooms := data.rooms ?? []
+  connections := data.connections ?? []
+  counts := data.counts ?? {}
+  current := data.state ?? "all"
+
+  filters := roomFilterLinks base, community.slug, counts, current
+  boardNotice := if connections.length is 0
+    notice "No platform connections yet. Add a platform before there is a channel to map.", "empty"
+  else if Number(counts.all ?? 0) is 0
+    notice "No channels recorded yet. Add the bot to a channel and send a message, or run /identify-topic there.", "empty"
+  else if rooms.length is 0
+    notice "No rooms mapped yet. Start with a channel in the Needs a room view.", "warning"
+  else
+    ""
+  pendingNotice := if Number(data.pending_spaces ?? 0) > 0
+    notice "A pending platform connection is waiting on Onboarding, not on this channel board.", "info"
+  else
+    ""
+
+  rowActions := (row: any) =>
+    channelPath := `${base}/communities/${slug}/rooms/channels/${encodeURIComponent(String(row.id))}`
+    open := act "Open", "view_rooms", may, variant: "secondary", to: channelPath
+    approve := if row.suggested
+      post `${base}/communities/${slug}/suggested/${encodeURIComponent(String(row.id))}/approve`,
+           act("Approve", "manage_discovered", may, variant: "primary")
+    else
+      ""
+    actionsRow open + approve
+
+  channelsTable := table
+    columns: [
+      { key: "channel", header: "Channel" }
+      { key: "platform", header: "Platform" }
+      { key: "room", header: "Room" }
+      { key: "state", header: "State", tone: "state_tone" }
+    ]
+    rows: rows
+    empty: "No channels match this view."
+    actions: rowActions
+
+  autoMap := post `${base}/communities/${slug}/discovered/auto-map`,
+                  act("Automatic mapping", "manage_discovered", may, variant: "secondary")
+  channelsSection := section {
+    title: "Channels"
+    body: filters + boardNotice + pendingNotice + autoMap + channelsTable
+  }
+
+  roomActions := (room: any) =>
+    roomPath := `${base}/communities/${slug}/rooms/${encodeURIComponent(room.room_key)}`
+    open := act "Open", "view_rooms", may, variant: "secondary", to: roomPath
+    features := act "Configure features", "view_rooms", may, variant: "secondary",
+                   to: `${base}/communities/${slug}/features?scope=${encodeURIComponent(room.room_key)}`
+    actionsRow open + features
+
+  roomsTable := table
+    columns: [
+      { key: "name", header: "Room" }
+      { key: "room_key", header: "Room key", format: "code" }
+      { key: "channel_count", header: "Channels", align: "end" }
+      { key: "platforms", header: "Platforms" }
+    ]
+    rows: rooms
+    empty: "No rooms yet."
+    actions: roomActions
+  roomSection := section { title: "Rooms", variant: "collapsible", body: roomsTable }
+
+  createSection .= ""
+  if data.channel_management_enabled
+    options := connections.map((connection: any) =>
+      [`${connection.adapter}/${connection.account}`, `${connection.adapter} / ${connection.account}`]
+    )
+    fields := field(
+      name: "name", label: "Room name", type: "text", required: true,
+      hint: "The bot provisions a platform channel for each selected connection."
+    ) + field(
+      name: "platforms", label: "Platforms", type: "checklist", options: options,
+      hint: "Choose the platforms that should receive the new room."
+    ) + field(
+      name: "template_channel", label: "Copy permissions from", type: "text",
+      hint: "Optional endpoint key."
+    )
+    createForm := form {
+      action: `${base}/communities/${slug}/rooms`
+      fields: fields
+      submit: act "Create room", "manage_rooms", may
+    }
+    createSection = section { title: "Create a room", variant: "collapsible", body: createForm }
+  else
+    createSection = section {
+      title: "Create a room"
+      variant: "collapsible"
+      body: notice("Channel management is off for this community. Enable it in Features to provision rooms here.", "info")
+    }
+
+  tablePage {
+    title: "Rooms"
+    lede: "Every channel this community knows about, with its room and name state in one place."
+    sections: channelsSection + roomSection + createSection
+  }
+
+// Channel details keep the mapping fields out of the board's Actions column.
+// All three destination fields remain visible because no script chooses one
+// for the operator; the destination choice states exactly which value saves.
+
+function renderRoomChannel(data: any, base: string): string
+  community := data.community
+  slug := encodeURIComponent community.slug
+  channel := data.channel
+  may := data.may ?? {}
+  roomOptions := data.room_options ?? []
+  partnerOptions := data.partner_options ?? []
+
+  facts := keyValues data.details ?? [], "stacked"
+  factsSection := section {
+    title: channel.channel
+    body: facts + notice(data.endpoint_notice, "info")
+  }
+
+  nameForm := form {
+    action: `${base}/communities/${slug}/rooms/channels/${encodeURIComponent(String(channel.id))}/name`
+    fields: field(name: "label", label: "Name", type: "text", value: data.name,
+                  hint: "This name is shown on the Rooms board.")
+    submit: act "Save name", "manage_discovered", may
+  }
+  reviewActions := if data.suggested
+    approve := post `${base}/communities/${slug}/suggested/${encodeURIComponent(String(channel.id))}/approve`,
+                    act("Approve", "manage_discovered", may, variant: "primary")
+    reject := post `${base}/communities/${slug}/suggested/${encodeURIComponent(String(channel.id))}/reject`,
+                   act("Reject", "manage_discovered", may, variant: "destructive",
+                       confirm: "Reject this proposed name? The channel and its mappings stay in place.")
+    actionsRow approve + reject
+  else
+    ""
+  nameSection := section { title: "Name", body: nameForm + reviewActions }
+
+  destinationLabel := channel.mapped ? "Move to" : "Put in"
+  mappingFields := field(
+    name: "destination", label: destinationLabel, type: "choice", value: "room",
+    options: [["room", "An existing room"], ["partner", "A new room with another unroomed channel"],
+              ["solo", "A new room for this channel only"]],
+    hint: "Choose one destination. The matching field below is the one this form reads."
+  ) + field(
+    name: "room_key", label: "Existing room", type: "select",
+    options: [["", "Choose a room"]].concat(roomOptions),
+    hint: "Used when the first destination is selected."
+  ) + field(
+    name: "partner", label: "Other unroomed channel", type: "select",
+    options: [["", "Choose a channel"]].concat(partnerOptions),
+    hint: "Used when the second destination is selected."
+  ) + field(
+    name: "label", label: "New room name", type: "text",
+    hint: "Used when starting a room. Leave it blank to derive a stable room key."
+  )
+  mappingForm := form {
+    action: `${base}/communities/${slug}/rooms/channels/${encodeURIComponent(String(channel.id))}/mapping`
+    fields: mappingFields
+    submit: act(channel.mapped ? "Move channel" : "Map channel", "manage_discovered", may)
+  }
+  removeActions := (data.rooms ?? []).map((room: any) =>
+    form {
+      action: `${base}/communities/${slug}/rooms/channels/${encodeURIComponent(String(channel.id))}/unlink`
+      variant: "action"
+      hidden: { room_key: room.room_key }
+      submit: act(`Remove from ${room.name}`, "manage_discovered", may, variant: "destructive",
+                  confirm: `Remove this channel from ${room.name}? The room and its settings remain.`)
+    }
+  ).join ""
+  mappingSection := section {
+    title: channel.mapped ? "Room" : "Map this channel"
+    body: mappingForm + removeActions
+  }
+
+  memberActions := (member: any) =>
+    act "Open", "view_rooms", may, variant: "secondary",
+        to: `${base}/communities/${slug}/rooms/channels/${encodeURIComponent(String(member.id))}`
+  membersTable := table
+    columns: [
+      { key: "channel", header: "Channel" }
+      { key: "platform", header: "Platform" }
+      { key: "state", header: "State", tone: "state_tone" }
+    ]
+    rows: data.members ?? []
+    empty: "This channel is not in a room yet."
+    actions: memberActions
+  membersSection := section { title: "Channels in this room", body: membersTable }
+
+  page {
+    title: "Channel"
+    lede: `The details and room mapping for ${channel.channel}.`
+    sections: factsSection + nameSection + mappingSection + membersSection
+  }
+
+function renderRoomDetail(data: any, base: string): string
+  community := data.community
+  slug := encodeURIComponent community.slug
+  room := data.room
+  may := data.may ?? {}
+
+  factsSection := section { title: room.name, body: keyValues(data.details ?? [], "stacked") }
+  memberActions := (member: any) =>
+    act "Open", "view_rooms", may, variant: "secondary",
+        to: `${base}/communities/${slug}/rooms/channels/${encodeURIComponent(String(member.id))}`
+  membersTable := table
+    columns: [
+      { key: "channel", header: "Channel" }
+      { key: "platform", header: "Platform" }
+      { key: "state", header: "State", tone: "state_tone" }
+    ]
+    rows: data.members ?? []
+    empty: "No channels are linked to this room."
+    actions: memberActions
+  membersSection := section {
+    title: "Channels"
+    body: act("Configure features", "view_rooms", may, variant: "secondary",
+              to: `${base}/communities/${slug}/features?scope=${encodeURIComponent(room.room_key)}`) + membersTable
+  }
+
+  renameForm := form {
+    action: `${base}/communities/${slug}/rooms/${encodeURIComponent(room.room_key)}/name`
+    fields: field(name: "label", label: "Room name", type: "text", value: room.label, required: true,
+                  hint: "The room key stays fixed because feature configuration uses it.")
+    submit: act "Save name", "manage_rooms", may
+  }
+  managementBody .= renameForm
+  if data.channel_management_enabled
+    deleteFields := field(name: "confirm_name", label: `Type ${room.room_key} to confirm`, type: "text", required: true,
+                          hint: "Deleting unmaps this room. Its feature settings and history stay available.") +
+      field(name: "delete_platform_channels", label: "Platform channels", type: "checklist",
+            options: [["1", "Also delete platform channels created by rubotty"]])
+    deleteForm := form {
+      action: `${base}/communities/${slug}/rooms/${encodeURIComponent(String(room.id))}/delete`
+      fields: deleteFields
+      submit: act("Delete room", "manage_rooms", may, variant: "destructive",
+                  confirm: "Delete this room? The typed confirmation is required.")
+    }
+    managementBody += deleteForm
+  else
+    managementBody += notice("Channel management is off, so room deletion is unavailable here.", "info")
+  managementSection := section { title: "Room management", variant: "collapsible", body: managementBody }
+
+  page {
+    title: "Room"
+    lede: `The channels and configuration scope for ${room.name}.`
+    sections: factsSection + membersSection + managementSection
+  }
+
+function renderAutomaticMapping(data: any, base: string): string
+  community := data.community
+  slug := encodeURIComponent community.slug
+  may := data.may ?? {}
+  proposals := data.proposals ?? []
+  skipped := data.skipped ?? []
+
+  intro := notice(
+    "These mappings are proposed from channel names. Untick anything that looks wrong. Nothing changes until you save."
+    "info"
+  )
+  confirmForm := if proposals.length is 0
+    notice "Nothing could be proposed for this community.", "empty"
+  else
+    fields := field(
+      name: "apply", label: "Mappings to apply", type: "checklist",
+      value: proposals.map((proposal: any) => proposal.endpoint_key),
+      options: proposals.map((proposal: any) =>
+        [proposal.endpoint_key, `${proposal.channel} on ${proposal.platform}: ${proposal.action}`]
+      ),
+      hint: "Each tick creates or extends the room shown beside that channel."
+    )
+    form {
+      action: `${base}/communities/${slug}/discovered/auto-map/apply`
+      fields: fields
+      submit: act "Save the ticked mappings", "manage_discovered", may
+    }
+  proposalSection := section { title: "Proposed mappings", body: intro + confirmForm }
+
+  skippedTable := table
+    columns: [
+      { key: "channel", header: "Channel" }
+      { key: "platform", header: "Platform" }
+      { key: "reason", header: "Why it needs mapping by hand" }
+    ]
+    rows: skipped
+    empty: "Every considered channel has a proposed mapping."
+  skippedSection := section { title: "Left alone", variant: "collapsible", body: skippedTable }
+
+  page {
+    title: "Automatic mapping"
+    lede: "Review the suggested room mappings before saving them."
+    sections: proposalSection + skippedSection
+  }
+
+// Script endpoints: the outbound addresses a community's scripts may call by name. A
+// raw timeout_seconds goes through Format.duration rather than reaching the
+// page as a number, and the two actions per row draw as one consistent Button
+// pair instead of the name doubling as a link while only Delete carried any
+// control at all.
+
+function renderEndpoints(data: any, base: string): string
+  community := data.community
+  endpoints := data.endpoints ?? []
+  may := data.may ?? {}
+  slug := encodeURIComponent community.slug
+
+  explainer := notice(
+    "A script never sees an endpoint's address or the header credentials set here."
+    "info"
+  )
+
+  addButton := act("Add endpoint", "manage_endpoints", may, variant: "primary",
+                   to: `${base}/communities/${slug}/endpoints/new`)
+
+  rowActions := (row: any) =>
+    editUrl := `${base}/communities/${slug}/endpoints/${encodeURIComponent(String(row.id))}`
+    // Open only needs view_endpoints, the read every row on this page already
+    // required to be here at all; manage_endpoints is what the save and the
+    // delete actually gate on.
+    editButton := act "Open", "view_endpoints", may, variant: "secondary", to: editUrl
+    deleteButton := act "Delete", "manage_endpoints", may, variant: "destructive"
+    editButton + post(editUrl + "/delete", deleteButton)
+
+  endpointsTable := table
+    columns: [
+      { key: "name", header: "Name" }
+      { key: "http_method", header: "Method", format: "code" }
+      { key: "url", header: "Address" }
+      { key: "timeout_seconds", header: "Timeout", format: "duration" }
+      { key: "enabled", header: "Enabled", format: "boolean", tone: "enabled_tone" }
+    ]
+    rows: endpoints
+    empty: "No script endpoints yet, so rubotty.async_http has nothing to call. Add one and a script can reach it by name."
+    actions: rowActions
+
+  introSection := section { variant: "plain", body: explainer }
+  listSection := section { title: "Configured script endpoints", body: addButton + endpointsTable }
+
+  tablePage {
+    title: "Script endpoints"
+    lede: "The outbound addresses this community's scripts can call by name with rubotty.async_http."
+    sections: introSection + listSection
+  }
+
+// Endpoint editor: one task form instead of a run of cards. Name and target
+// come first because they establish what a script can call and where it can
+// go. Headers and fixed query values are deliberately collapsed: useful when
+// needed, but not the decision a person needs to make before saving an
+// ordinary endpoint.
+
+function renderEndpointEdit(data: any, base: string): string
+  community := data.community
+  endpoint := data.endpoint ?? {}
+  may := data.may ?? {}
+  slug := encodeURIComponent community.slug
+  editing := endpoint.id is not null and endpoint.id is not undefined
+  title := editing ? `Edit ${endpoint.name}` : "New endpoint"
+  target := `${base}/communities/${slug}/endpoints`
+  detailHint := "Use {braces} for a value the script may fill. The host and every fixed value stay under this community's control."
+
+  identityFields := field(
+    name: "name", label: "Name", type: "text", value: endpoint.name, required: true,
+    hint: "Scripts use this lowercase name with rubotty.async_http."
+  ) + field(
+    name: "http_method", label: "Method", type: "select", value: endpoint.http_method,
+    options: data.http_methods ?? []
+  ) + field(
+    name: "description", label: "What it is for", type: "text", value: endpoint.description,
+    size: "full", hint: "Shown on the endpoint list for the next administrator."
+  )
+  identitySection := section { title: "Name and method", body: identityFields }
+
+  targetSection := section {
+    title: "Target"
+    body: notice("Use an HTTP or HTTPS address. " + detailHint, "info") + field(
+      name: "url", label: "URL", type: "text", value: endpoint.url, size: "full", required: true
+    )
+  }
+
+  detailsSection := section {
+    title: "Optional request details"
+    variant: "collapsible"
+    body: field(
+      name: "query_params", label: "Query parameters", type: "multiline", value: endpoint.query_params,
+      size: "full", hint: "One name: value pair per line. A script may fill only the braces you place here."
+    ) + field(
+      name: "headers", label: "Headers", type: "multiline", value: endpoint.headers,
+      size: "full", hint: "One Name: value pair per line. Scripts never receive these values."
+    )
+  }
+
+  limitsSection := section {
+    title: "Availability"
+    body: field(
+      name: "timeout_seconds", label: "Timeout in seconds", type: "number", value: endpoint.timeout_seconds,
+      size: "short", hint: `Maximum ${data.max_timeout} seconds. The bot gives up when the far end takes longer.`
+    ) + field(
+      name: "enabled", label: "Available to scripts", type: "toggle", value: endpoint.enabled ? "true" : "false",
+      hint: "Turn this off to keep the endpoint without allowing any script to call it."
+    )
+  }
+
+  helpDisclosure := helpSection {
+    title: "How a script calls this"
+    action: "view_endpoints"
+    may: may
+    paragraphs: [
+      "A script names this endpoint and rubotty asks the address written here. The only thing a script " +
+        "decides is what goes into a brace you wrote, so it can pick the town and never the site."
+      "The scripting reference works one endpoint through end to end: the URL, the query parameters, " +
+        "the Lua that calls it, what a POST body looks like and how the answer comes back."
+    ]
+    reference: ["Read the scripting reference", `${base}/documentation`]
+  }
+
+  hidden := if editing then { id: endpoint.id } else {}
+  editor := form {
+    action: target
+    body: identitySection + targetSection + detailsSection + limitsSection + helpDisclosure
+    hidden: hidden
+    validation: "Name and URL are required, and a name is lowercase letters, numbers, dashes and underscores."
+    actions: act("Back to endpoints", "view_endpoints", may, variant: "secondary", to: target)
+    submit: act(editing ? "Save endpoint" : "Create endpoint", "manage_endpoints", may)
+  }
+  page {
+    title: title
+    lede: "Set the one address and limits this community's scripts may use."
+    sections: editor
+  }
+
+// Scripts: this community's operator-authored rules, live and archived, as a
+// table listing. The ERB view drew the "Alpha" marker as a Tag and the on/off,
+// checked/unchecked pair as Status pills; here the marker is folded into the
+// section title as plain text and the two states are ordinary boolean columns,
+// so a reader scanning the table compares them down a column instead of
+// reading two differently coloured pills per row.
+
+function renderScripts(data: any, base: string): string
+  community := data.community
+  scripts := data.scripts ?? []
+  archived := data.archived ?? []
+  may := data.may ?? {}
+  slug := encodeURIComponent community.slug
+
+  // The consequence of the control right there: turning one on changes what
+  // real messages meet. The background behind it goes in the disclosure below.
+  explainer := notice(
+    "A script that is on runs on real messages, immediately before the bridge, so a rule that " +
+      "rejects or rewrites gets the last word on what the other platforms see."
+    "warning"
+  )
+  runtimeNotice := data.runtime_available ? "" : notice(
+    "No Lua interpreter is installed on this deployment, so nothing here can be checked or run. " +
+      "Scripts can still be written and saved."
+    "warning"
+  )
+  helpDisclosure := helpSection {
+    title: "About scripts"
+    action: "view_scripts"
+    may: may
+    paragraphs: [
+      "Turning the Scripts feature off for a room stops all of them at once, whatever each one says here."
+      "Saving is always allowed, including half finished work. Turning one on needs a passing check " +
+        "first, and editing it afterwards puts it back to unchecked, since the check applies to the " +
+        "exact text that passed it."
+      "Everything here is provisional while scripts are in alpha: the function list, what a script is " +
+        "handed and the shape it returns can all change in ways that break scripts you have already " +
+        "written."
+    ]
+    reference: ["Read the scripting reference", `${base}/documentation`]
+  }
+
+  writeButton := act("Write a script", "manage_scripts", may, variant: "primary",
+                     to: `${base}/communities/${slug}/scripts/new`)
+
+  rowActions := (row: any) =>
+    scriptUrl := `${base}/communities/${slug}/scripts/${encodeURIComponent(String(row.id))}`
+    // Turning on needs a passing check first; turning off never does, the same
+    // asymmetry act_button's own `enabled:` argument carried.
+    toggleButton := act(
+      row.live ? "Turn off" : "Turn on", "manage_scripts", may
+      variant: row.live ? "secondary" : "primary", enabled: row.live or row.verified
+    )
+    deleteButton := act "Delete", "manage_scripts", may, variant: "destructive"
+    post(`${scriptUrl}/${row.live ? "disable" : "enable"}`, toggleButton) +
+      post(`${scriptUrl}/delete`, deleteButton)
+
+  liveTable := table
+    columns: [
+      { key: "name", header: "Name" }
+      { key: "kind", header: "Kind", format: "enum" }
+      { key: "language", header: "Language", format: "enum" }
+      { key: "trigger_type", header: "Trigger", format: "code" }
+      { key: "live", header: "Live", format: "boolean" }
+      { key: "verified", header: "Checked", format: "boolean" }
+    ]
+    rows: scripts
+    empty: "No scripts yet."
+    actions: rowActions
+
+  introSection := section { variant: "plain", body: explainer + runtimeNotice + helpDisclosure }
+  liveSection := section { title: "Scripts (alpha)", body: writeButton + liveTable }
+  sections .= introSection + liveSection
+
+  if archived.length > 0
+    restoreActions := (row: any) =>
+      restoreButton := act "Restore", "manage_scripts", may, variant: "primary"
+      post `${base}/communities/${slug}/scripts/${encodeURIComponent(String(row.id))}/restore`, restoreButton
+
+    archivedNotice := notice(
+      "Deleting keeps the text. Restoring brings one back switched off and unchecked, because the " +
+        "room may have moved on while it sat here, and under a free name if something has taken " +
+        "its old one."
+      "info"
+    )
+    archivedTable := table
+      columns: [
+        { key: "name", header: "Name" }
+        { key: "kind", header: "Kind", format: "enum" }
+        { key: "language", header: "Language", format: "enum" }
+        { key: "trigger_type", header: "Trigger", format: "code" }
+      ]
+      rows: archived
+      empty: "No deleted scripts."
+      actions: restoreActions
+    sections += section { title: "Deleted", body: archivedNotice + archivedTable }
+
+  // What the scripts here recorded for themselves, which used to sit on the
+  // analytics page among the numbers rubotty counts by itself. Community
+  // wide, since a stat row carries no script name.
+  recorded := data.recorded ?? []
+  if recorded.length > 0
+    recordedNotice := notice(
+      "Numbers your own scripts recorded with increment_stat and record_stat, rather than anything " +
+        "rubotty counts by itself. They expire after 90 days, and each stat holds a limited number " +
+        "of rows."
+      "info"
+    )
+    recordedTable := table
+      columns: [
+        { key: "stat", header: "Stat" }
+        { key: "row", header: "Row" }
+        { key: "value", header: "Value", align: "end" }
+        { key: "room", header: "Room" }
+      ]
+      rows: recorded
+      empty: "Nothing recorded yet."
+    sections += section { title: "What your scripts recorded", body: recordedNotice + recordedTable }
+
+  tablePage {
+    title: "Scripts"
+    lede: "Operator-authored rules, in Lua or another available dialect, that run on real " +
+      "messages immediately before the bridge sees them."
+    sections: sections
+  }
+
+// The script authoring flow: when it runs, then the code and data, then the
+// check and the switch. Named steps in that order, because a rule that is
+// saved before anybody has decided what wakes it is a rule nobody can check.
+// The examples and the extra conditions stay folded until somebody wants
+// them, since neither is part of writing an ordinary script.
+//
+// The condition boxes are all drawn, and ./script-triggers.civet hides the
+// ones the chosen conditions do not read once the screen is in the document.
+// Nothing here decides that, so the page cannot drift from what the trigger
+// classes declare.
+
+function scriptStateNotice(script: any): string
+  return notice("This script is on and running on real messages.", "warning") if script.live
+  return notice(`Switched off automatically: ${script.disabled_reason}`, "danger") if script.disabled_reason
+
+  notice("This script is off. Turning it on needs a passing check first.", "info")
+
+function scriptConditionFields(script: any, triggers: any[], summary: string): string
+  config := script.trigger_config ?? {}
+  field(
+    name: "trigger_type", label: "Condition", type: "select", value: script.trigger_type,
+    options: triggers.map((entry: any) => [entry.name, entry.name]), hint: summary
+  ) + field(
+    name: "trigger_name", label: "Command name", type: "text", value: config.name, size: "short",
+    hint: "Without the slash. Somebody types /roll or !roll."
+  ) + field(
+    name: "trigger_words", label: "Words, one per line", type: "multiline", value: config.words,
+    size: "full", hint: "Matched anywhere in a message, ignoring case."
+  ) + field(
+    name: "trigger_names", label: "Names, one per line", type: "multiline", value: config.names,
+    size: "full", hint: "The people to watch for, as they appear in the room."
+  ) + field(
+    name: "trigger_window", label: "Window", type: "text", value: config.window, size: "short",
+    hint: "How many recent messages to look back over."
+  ) + field(
+    name: "trigger_minutes", label: "Minutes", type: "text", value: config.minutes, size: "short",
+    hint: "How far back to look in real time, which is the one to use for pace."
+  ) + field(
+    name: "trigger_count", label: "Count", type: "text", value: config.count, size: "short",
+    hint: "How many of those have to match before your script runs."
+  ) + field(
+    name: "trigger_every", label: "How often", type: "select", value: config.every,
+    options: [["hour", "Every hour"], ["day", "Every day"], ["week", "Every week"]], size: "short"
+  ) + field(
+    name: "trigger_at", label: "At", type: "text", value: config.at, size: "short",
+    hint: "Time of day in UTC for a daily or weekly one. Blank starts the clock when you turn it on."
+  )
+
+// The rules this script carries, in the order they are tried, as one sentence.
+// Drawn by the server so the set reads as a set with no script running at all;
+// ./script-rules.civet redraws the same sentence as somebody edits the list.
+function scriptRulesSummary(script: any, triggers: any[]): string
+  names := [script.trigger_type, ...(script.trigger_also ?? [])]
+  picked := names.map((name: string) => triggers.find((entry: any) => entry.name is name)).filter Boolean
+  return "Pick what wakes this script." unless picked.length > 0
+
+  ordered := names.filter((name: string) => name).map(
+    (name: string, index: number) => `${index + 1}. ${name}`
+  ).join ", "
+  `Tried in order: ${ordered}. The first that matches wins, so this runs once per message. ${triggerSummary picked}`.trim()
+
+function scriptWhenSection(script: any, data: any, triggers: any[]): string
+  summary := (triggers.find((entry: any) => entry.name is script.trigger_type)?.summary) ?? ""
+  identity := field(
+    name: "name", label: "Name", type: "text", value: script.name, required: true,
+    hint: "What this rule is called on the list."
+  ) + field(
+    name: "kind", label: "Trigger", type: "select", value: script.kind,
+    options: data.kinds ?? [], size: "full",
+    hint: "What invokes the script. The condition below narrows when that happens."
+  )
+  alsoSection := section {
+    title: "More conditions"
+    variant: "collapsible"
+    body: field(
+      name: "trigger_also", label: "And also", type: "checklist", value: script.trigger_also ?? []
+      options: triggers.map((entry: any) => [entry.name, entry.name])
+      hint: `Leave these alone for an ordinary script. A script may carry ${data.max_conditions} conditions, tried in order, and every one you tick shares the boxes above.`
+    ) + field(
+      name: "trigger_edits", label: "Also run when somebody edits a message", type: "toggle",
+      value: script.trigger_edits ? "true" : "false",
+      hint: "With it on, an edit is offered to your conditions the same way a new message is."
+    )
+  }
+
+  section {
+    title: "When it runs"
+    body: identity + notice(scriptRulesSummary(script, triggers), "info") +
+      scriptConditionFields(script, triggers, summary) + alsoSection
+  }
+
+function scriptCodeSection(script: any, data: any): string
+  dataSection := section {
+    title: "Data file"
+    variant: "collapsible"
+    body: field(
+      name: "yaml_data", label: "YAML data", type: "code", value: script.yaml_data, size: "full",
+      hint: "A YAML document this script alone reads with rubotty.yaml_data(). Parsed when you save."
+    )
+  }
+
+  section {
+    title: "Code and data"
+    body: field(
+      name: "language", label: "Language", type: "select", value: script.language,
+      options: data.languages ?? [], size: "short",
+      hint: "Every dialect compiles to Lua before it runs, so the choice is only how you write it."
+    ) + field(
+      name: "source", label: "Script", type: "code", value: script.source, size: "full", required: true,
+      hint: "A command returns the reply as a string. A processor returns a table naming an action."
+    ) + dataSection
+  }
+
+function scriptCheckSection(script: any, may: any, base: string, slug: string, runtime: boolean): string
+  return section {
+    title: "Check and turn on"
+    body: notice(
+      "Save this script first. Once it exists it can be checked here, and turning it on needs a " +
+        "passing check."
+      "info"
+    )
+  } unless script.id
+
+  scriptUrl := `${base}/communities/${slug}/scripts/${encodeURIComponent(String(script.id))}`
+  runtimeNotice := runtime ? "" : notice(
+    "No Lua interpreter is installed on this deployment, so nothing here can be checked or run."
+    "warning"
+  )
+  notes := script.verification_notes ? notice(`The last check found: ${script.verification_notes}`, "danger") : ""
+  verifyForm := post(`${scriptUrl}/verify`, act("Run the check", "manage_scripts", may, variant: "secondary"))
+  switchForm := post(
+    `${scriptUrl}/${script.live ? "disable" : "enable"}`
+    act(
+      script.live ? "Turn off" : "Turn on", "manage_scripts", may
+      variant: script.live ? "secondary" : "primary", enabled: script.live or script.verified
+    )
+  )
+
+  section {
+    title: "Check and turn on"
+    body: scriptStateNotice(script) + runtimeNotice + notes + notice(
+      "The check runs this script against an empty message, one word, a very long one, punctuation, " +
+        "non English text and two malformed patterns. It is a smoke test rather than a proof."
+      "info"
+    ) + actionsRow(verifyForm + switchForm)
+  }
+
+// What one script has been up to since it was last edited: its failure
+// counter, its recorded errors and what it raised with rubotty.alert. Every
+// value here already arrived as the text a reader sees, since the client has
+// no "relative" formatter of its own to turn a raw timestamp into one.
+function scriptActivitySection(script: any, activity: any): string
+  return "" unless activity
+
+  errorsTable := table
+    columns: [
+      { key: "at", header: "When" }
+      { key: "message", header: "What went wrong" }
+    ]
+    rows: activity.errors ?? []
+    empty: "This script has not failed on real traffic."
+
+  activityBody := statRow(activity.stats ?? []) + keyValues(activity.pairs ?? []) + errorsTable
+  activitySection := section { title: "Activity", body: activityBody }
+
+  alertsNotice := notice(
+    `What ${script.name} raised with rubotty.alert, matched on the name it carried at the time, ` +
+      "so a rename leaves older alerts under the old one."
+    "info"
+  )
+  alertsTable := table
+    columns: [
+      { key: "created_at", header: "When" }
+      { key: "room_key", header: "Room", format: "code" }
+      { key: "text", header: "Alert" }
+      { key: "how", header: "How", tone: "how_tone" }
+    ]
+    rows: activity.alerts ?? []
+    empty: "This script has raised no alerts."
+
+  activitySection + section { title: "Alerts", body: alertsNotice + alertsTable }
+
+function renderScriptEdit(data: any, base: string): string
+  community := data.community
+  script := data.script ?? {}
+  may := data.may ?? {}
+  triggers := data.triggers ?? []
+  slug := encodeURIComponent community.slug
+  editing := script.id is not null and script.id is not undefined
+  target := `${base}/communities/${slug}/scripts`
+
+  hidden := if editing then { id: script.id } else {}
+  editor := form {
+    action: target
+    body: scriptWhenSection(script, data, triggers) + scriptCodeSection(script, data)
+    hidden: hidden
+    validation: "Saving always works, even mid thought. It just leaves the script unchecked and off."
+    actions: act("Back to scripts", "view_scripts", may, variant: "secondary", to: target)
+    submit: act(editing ? "Save script" : "Create script", "manage_scripts", may)
+  }
+
+  page {
+    title: editing ? `Edit ${script.name}` : "New script"
+    lede: "What wakes this rule, what it does, and the check it has to pass before it answers anybody."
+    sections: editor + scriptCheckSection(script, may, base, slug, data.runtime_available) +
+      (editing ? scriptActivitySection(script, data.activity) : "")
+  }
+
+// Redirections: every run of messages an operator has moved out of one room
+// and into another, newest first. The status column ships as display text
+// (ViewData#redirections already turns "posting"/"deleting" into
+// "reposting"/"clearing the original") through Table's ordinary text
+// column like every other plain value here, since a Status pill would give
+// one column a weight the rest of the row hasn't earned.
+
+function renderRedirections(data: any, base: string): string
+  community := data.community
+  redirections := data.redirections ?? []
+  may := data.may ?? {}
+  slug := encodeURIComponent community.slug
+
+  explainer := notice(
+    "An operator starts a move in the room itself: reply to the first message with /redirect, " +
+      "then reply to the last one with /end. A move that is still reposting can be stopped; one " +
+      "that has started clearing the original cannot, since stopping it half way would leave the " +
+      "run in both rooms at once."
+    "info"
+  )
+
+  rowActions := (row: any) =>
+    return "" unless row.can_stop
+
+    stopButton := act "Stop", "manage_redirection", may
+    post `${base}/communities/${slug}/redirections/${encodeURIComponent(String(row.id))}/stop`, stopButton
+
+  redirectionsTable := table
+    columns: [
+      { key: "created_at", header: "When", format: "timestamp" }
+      { key: "operator", header: "By" }
+      { key: "source_endpoint_id", header: "From", format: "code" }
+      { key: "target_room_id", header: "To", format: "code" }
+      { key: "message_count", header: "Messages" }
+      { key: "state", header: "State" }
+    ]
+    rows: redirections
+    empty: "Nothing has been moved in this community yet."
+    actions: rowActions
+
+  introSection := section { variant: "plain", body: explainer }
+  listSection := section { title: "Recent redirections", body: redirectionsTable }
+
+  tablePage {
+    title: "Redirections"
+    lede: "Every run of messages an operator has moved out of one of this community's rooms " +
+      "and into another, newest first."
+    sections: introSection + listSection
+  }
+
+// Webhooks: where this community's events are sent, and what happened to every
+// attempt at sending one. A subscription is created over the REST API rather
+// than here (creating one hands out a signing secret), so this section is
+// read-only besides the retry on a dead-lettered delivery.
+
+// A dead-lettered delivery is worth saying out loud even before the table
+// beneath it is scanned, the same reason the ERB view draws this above
+// Deliveries rather than leaving the count to be read off the table.
+function failedDeliveriesNotice(count: number): string
+  return "" if count is 0
+
+  notice(
+    `${count} ${count is 1 ? "delivery has" : "deliveries have"} been given up on. ` +
+      "Sending one again puts it back on the queue with its attempts reset."
+    "warning"
+  )
+
+function renderWebhooks(data: any, base: string): string
+  community := data.community
+  subscriptions := data.subscriptions ?? []
+  deliveries := data.deliveries ?? []
+  may := data.may ?? {}
+  slug := encodeURIComponent community.slug
+
+  explainer := notice(
+    "Each delivery is signed to the Standard Webhooks conventions, and delivery is at least " +
+      "once, so a subscriber should ignore an id it has already seen. A subscription is created " +
+      "over the REST API rather than here, because creating one hands out a signing secret. " +
+      `Deliveries are kept for ${data.retention_days} days.`
+    "info"
+  )
+
+  subscriptionsTable := table
+    columns: [
+      { key: "label", header: "Label" }
+      { key: "url", header: "Address", format: "code" }
+      { key: "events", header: "Events" }
+      { key: "room", header: "Room", format: "code" }
+      { key: "state", header: "State" }
+    ]
+    rows: subscriptions
+    empty: "Nothing in this community is subscribed to anything."
+
+  failedNotice := failedDeliveriesNotice data.failed_count ?? 0
+
+  rowActions := (row: any) =>
+    return "" unless row.can_retry
+
+    retryButton := act "Send again", "manage_webhooks", may, variant: "secondary"
+    post `${base}/communities/${slug}/webhooks/deliveries/${encodeURIComponent(String(row.id))}/retry`, retryButton
+
+  deliveriesTable := table
+    columns: [
+      { key: "created_at", header: "When" }
+      { key: "event_type", header: "Event" }
+      { key: "room", header: "Room", format: "code" }
+      { key: "outcome", header: "Outcome" }
+      { key: "attempts", header: "Tries" }
+      { key: "last_error", header: "Why" }
+    ]
+    rows: deliveries
+    empty: "Nothing has been sent yet."
+    actions: rowActions
+
+  introSection := section { variant: "plain", body: explainer }
+  subscriptionsSection := section { title: "Subscriptions", body: subscriptionsTable }
+  deliveriesSection := section { title: "Deliveries", body: failedNotice + deliveriesTable }
+
+  tablePage {
+    title: "Webhooks"
+    lede: "Where this community's events are sent, and what happened to every attempt at " +
+      "sending one."
+    sections: introSection + subscriptionsSection + deliveriesSection
+  }
+
+// Features: every known feature, one scope at a time, toggled in place;
+// every feature that has anything set draws through the one KeyValues call
+// below instead of the ERB page's three different config_summary shapes,
+// and one at its code default draws no block at all since the table above
+// already says so. The "Set a config key" escape hatch (an arbitrary
+// key/feature/value form) is not drawn, since it spends whichever
+// configure_<feature> grant the dropdown's live selection happens to name
+// and the Button primitive spends one fixed action per render; the
+// per-feature Config link covers a named feature instead, and the escape
+// hatch stays a real page load.
+
+function featureConfigHref(base: string, slug: string, feature: string, scope: string): string
+  `${base}/communities/${slug}/features/${encodeURIComponent(feature)}/config?scope=${encodeURIComponent(scope)}`
+
+function renderFeatures(data: any, base: string): string
+  community := data.community
+  scope := data.scope
+  scopes := data.scopes ?? []
+  rows := data.feature_rows ?? []
+  categories := data.feature_categories ?? []
+  may := data.may ?? {}
+  slug := encodeURIComponent community.slug
+  listPath := `${base}/communities/${slug}/features`
+
+  explainer := notice(
+    "A scope of all is the community-wide default every room inherits, and a per-room scope " +
+      "overrides it for every channel bridged into that room."
+    "info"
+  )
+  helpDisclosure := helpSection {
+    title: "About scopes and defaults"
+    action: "view_community"
+    may: may
+    paragraphs: [
+      "A feature with nothing set here runs at its code default, which is off for everything except " +
+        "the bridge."
+      "Toggle a feature in place below. Every feature with anything to configure carries a Config link " +
+        "right beside its toggle, whether its settings live on their own richer page or on the generic " +
+        "form; expand a row for a summary of what is set at this scope."
+    ]
+  }
+
+  // The toggle needs two hidden fields (selector, feature), which is what the
+  // full Form primitive is for rather than the bare form a lone Button needs:
+  // Form draws its own hidden inputs from +hidden:+, so nothing here writes an
+  // <input> by hand to get them there. A <button> inside a <summary> takes its
+  // own click rather than passing it to the disclosure, so pressing the switch
+  // never also opens or shuts the row it sits in.
+  // Never primary: twenty-six identical rows have no single call-to-action,
+  // and a primary button repeated that many times reads as one anyway.
+  // row.toggle_key marks one of file_rehosting's own two split rows (File
+  // Rehosting, File Uploads): its toggle posts enable_flag/disable_flag with
+  // a third hidden field naming which key, rather than the whole feature's
+  // enable/disable both rows would otherwise share.
+  featureToggle := (row: any) =>
+    op := row.toggle_key ? (row.enabled ? "disable_flag" : "enable_flag") : (row.enabled ? "disable" : "enable")
+    hidden := row.toggle_key ?
+      { selector: scope, feature: row.feature, key: row.toggle_key } :
+      { selector: scope, feature: row.feature }
+    toggleButton := act(
+      row.enabled ? "Disable" : "Enable", `toggle_${row.feature}`, may
+      variant: "secondary", size: "small", name: "op", value: op
+    )
+    form
+      action: listPath
+      variant: "edit"
+      hidden: hidden
+      fields: ""
+      submit: toggleButton
+
+  // A feature's own settings, folded into the row it belongs to rather than
+  // drawn as a second list underneath every row: the summary reads whatever
+  // is actually set (nothing, for a feature still at its code default). A
+  // feature with no config page at all says so instead of opening onto
+  // nothing. Expanding a row says what is set and only that; the way to the
+  // editor is the summary's own Config link (see featureRow below), so a
+  // reader never has to open a row to find out there is one.
+  featureDetail := (row: any) =>
+    return notice("Nothing to configure for this feature.", "empty") unless row.configurable
+
+    pairs := (row.config_pairs ?? []).map (pair: any) => [pair.label, pair.value, pair.format]
+    pairs.length > 0 ? keyValues(pairs, "stacked") : ""
+
+  // The section's own summary is a row of controls rather than a string:
+  // toggleSummary draws the toggle switch, then a Config link for every
+  // configurable feature, then the title and description, with the
+  // disclosure's own chevron moved to the far side to follow them rather
+  // than lead. Only the destination differs by feature: its own bespoke
+  // page where it has one, the generic per-feature form otherwise. A
+  // feature with nothing to configure gets no link, having nowhere to go.
+  featureRow := (row: any) =>
+    configHref := row.bespoke_path ?
+      `${base}/communities/${slug}/${row.bespoke_path}` :
+      featureConfigHref(base, slug, row.feature, scope)
+    configLink := row.configurable ?
+      act("Config", "view_community", may, variant: "secondary", size: "small", to: configHref) :
+      null
+    section {
+      variant: "collapsible"
+      chevron: "end"
+      summary: toggleSummary(featureToggle(row), row.enabled, row.label, row.description, configLink)
+      body: featureDetail(row)
+    }
+
+  // Every category draws as a collapsible group above the flat list, in
+  // feature_categories' own order (see ViewData#features); a category with
+  // nothing in it this scope is left out rather than drawn empty. A row not
+  // in any of them (row.category is null) stays in the flat list below, the
+  // same split features.erb's own @feature_categories[:rest] draws.
+  categoryKeys := new Set(categories.map (cat: any) => cat.key)
+  restRows := rows.filter (row: any) => !categoryKeys.has(row.category)
+  categorySections := categories.map((cat: any) =>
+    catRows := rows.filter (row: any) => row.category is cat.key
+    return "" if catRows.length is 0
+    section { title: cat.title, variant: "collapsible", body: catRows.map(featureRow).join "" }
+  ).join ""
+
+  featuresList := rows.length is 0 ?
+    notice("No known features.", "empty") :
+    categorySections + restRows.map(featureRow).join ""
+
+  introSection := section { variant: "plain", body: explainer + helpDisclosure }
+  listSection := section { title: `Scope ${scope}`, body: featuresList }
+
+  tablePage {
+    title: "Features"
+    lede: "Every known feature, for one scope at a time, toggled in place."
+    actions: scopeFilter(listPath, scope, scopes, may)
+    sections: introSection + listSection
+  }
+
+// The single-feature config editor: every field a feature's config_schema
+// declares, one scope at a time. A boolean draws as a toggle Field (a Yes/No
+// select), never a checkbox, since a checkbox submits nothing when unticked.
+
+// An array-valued field's current value, one entry per line, matching what the
+// Ruby view's config_field_lines does before a schema form ever sees it: the
+// Field primitive draws whatever string it is given, it does not know an array
+// from a scalar.
+function fieldValue(entry: any): any
+  return entry.value unless entry.type is "multiline" and Array.isArray entry.value
+
+  entry.value.map((item: any) => typeof item is "object" and item !== null ? JSON.stringify(item) : String(item)).join "\n"
+
+function renderFeatureConfig(data: any, base: string): string
+  community := data.community
+  feature := data.feature
+  featureLabel := data.feature_label
+  scope := data.scope
+  fields := data.fields ?? []
+  retention := data.retention_notice ?? null
+  may := data.may ?? {}
+  slug := encodeURIComponent community.slug
+  configPath := `${base}/communities/${slug}/features/${encodeURIComponent(feature)}/config`
+  listPath := `${base}/communities/${slug}/features`
+
+  retentionNotice := retention ? notice(`What this keeps: ${retention}`, "info") : ""
+  backNotice := notice(
+    `This page only edits config. Turning ${featureLabel} on or off for this scope is the Features ` +
+      "page's job, with the same scope already selected."
+    "info"
+  )
+  // A real navigable Button rather than a link named inside Notice's own
+  // escaped text, which is what the ERB page carried: Notice has no way to
+  // hold a link at all. It sits in the form's own action footer, where every
+  // other subordinate control on an edit screen sits.
+  backButton := act "Back to Features", "view_community", may, variant: "secondary", to: listPath
+  mayConfigure := !!may[`configure_${feature}`]
+
+  // hint_wrap on every field here: the hint is the only account this page
+  // gives of what a setting does, a cut one stops mid-sentence exactly where
+  // the explanation was, and the hover fallback that would recover it does
+  // not exist on a phone. One column with room to wrap, so nothing is lost.
+  fieldsHtml := fields.map((entry: any) =>
+    field
+      name: entry.name
+      label: entry.label
+      type: entry.type
+      value: fieldValue(entry)
+      size: entry.size ?? "medium"
+      options: entry.options ?? null
+      hint: entry.hint ?? null
+      hint_wrap: true
+      required: entry.required ?? false
+      entry_fields: entry.entry_fields ?? []
+      entry_variant: entry.entry_variant ?? "mapping"
+      entry_presets: entry.entry_presets ?? []
+      mapping_list_action: `configure_${feature}`
+      enabled: (entry.type is "mapping-list" ? mayConfigure : true)
+  ).join ""
+
+  editForm := form
+    action: configPath
+    variant: "edit"
+    hidden: { selector: scope }
+    fields: fieldsHtml
+    validation: "A blank field is left alone on save. Emptying a list that had entries stores an empty list, which turns that setting off."
+    actions: backButton
+    submit: act("Save", `configure_${feature}`, may)
+  formSection := section {
+    title: `Scope ${scope}`
+    body: retentionNotice + backNotice + editForm
+  }
+
+  // No Scope filter here: backNotice above already says scope is the
+  // Features page's job, and a second selector on this page would let a
+  // reader edit a scope other than the one they arrived to edit.
+  page {
+    title: `${featureLabel} config`
+    sections: formSection
+  }
+
+// Room games: what a script has running in each room through
+// rubotty.open_session. A room with nothing open is left out by the view data
+// itself rather than drawn as a row of dashes, so the table's own empty state
+// is what a quiet community sees; ViewData#participation_row resolves
+// opened_at to a relative distance and closes_at to a real timestamp before
+// either reaches here.
+
+function renderParticipation(data: any, base: string): string
+  community := data.community
+  rooms := data.rooms ?? []
+  may := data.may ?? {}
+  slug := encodeURIComponent community.slug
+
+  explainer := notice(
+    "Closing a session here ends the open round too, the same as the script's own close_session " +
+      "call would."
+    "info"
+  )
+
+  rowActions := (row: any) =>
+    closeUrl := `${base}/communities/${slug}/participation/${encodeURIComponent(String(row.id))}/close`
+    closeButton := act "Close session", "manage_participation", may,
+      variant: "destructive", confirm: `Close the session in ${row.room}? This ends the open round too.`
+    post closeUrl, closeButton
+
+  roomsTable := table
+    columns: [
+      { key: "room", header: "Room" }
+      { key: "session", header: "Session" }
+      { key: "rounds", header: "Rounds", align: "end" }
+      { key: "round_opened_at", header: "Round opened" }
+      { key: "round_closes_at", header: "Round closes", format: "timestamp" }
+    ]
+    rows: rooms
+    empty: "Nothing is running in any room right now. A script starts one with rubotty.open_session."
+    actions: rowActions
+
+  introSection := section { variant: "plain", body: explainer }
+  listSection := section { title: "Open sessions", body: roomsTable }
+
+  tablePage {
+    title: "Room games"
+    lede: "What a script has running in each room through rubotty.open_session."
+    sections: introSection + listSection
+  }
+
+// Alerts: what a community's scripts have raised with rubotty.alert. "How"
+// (quiet, loud and reached, loud and reached nobody) is drawn as a Status
+// pill toned by ViewData's own how_tone, since the words alone do not say
+// whether a loud alert reached anybody, and it used to be a plain table
+// cell since Table's column contract draws only Format text with no
+// primitive for a per-row status mark, so ViewData#alerts folds mode and
+// delivered_to into text server side instead of this file reaching past
+// the fifteen for one.
+
+function renderAlerts(data: any, base: string): string
+  community := data.community
+  alerts := data.alerts ?? []
+  may := data.may ?? {}
+  unseen := data.unseen ?? 0
+  slug := encodeURIComponent community.slug
+
+  explainer := notice(
+    "A loud alert also DMs this community's operators, reachable only where they have messaged " +
+      "the bot before, so one that reached nobody says so in the How column rather than looking " +
+      `like it went out. Alerts are kept for ${data.retention_days} days.`
+    "info"
+  )
+
+  markAllButton := act `Mark all ${unseen} seen`, "manage_alerts", may
+  markAllForm := unseen > 0 ? post(`${base}/communities/${slug}/alerts/seen`, markAllButton) : ""
+
+  rowActions := (row: any) =>
+    return "Seen" if row.seen
+    seenButton := act "Mark seen", "manage_alerts", may, variant: "secondary"
+    post `${base}/communities/${slug}/alerts/${encodeURIComponent(String(row.id))}/seen`, seenButton
+
+  alertsTable := table
+    columns: [
+      { key: "created_at", header: "When" }
+      { key: "room_key", header: "Room", format: "code" }
+      { key: "script", header: "Script" }
+      { key: "text", header: "Alert" }
+      { key: "how", header: "How", tone: "how_tone" }
+    ]
+    rows: alerts
+    empty: "No script in this community has raised an alert."
+    actions: rowActions
+
+  introSection := section { variant: "plain", body: explainer }
+  listSection := section { title: "Recent alerts", body: markAllForm + alertsTable }
+
+  tablePage {
+    title: "Alerts"
+    lede: "Everything this community's scripts have raised with rubotty.alert, newest first."
+    sections: introSection + listSection
+  }
+
+// Audit: one history at two scopes. Source filters the events but does not
+// spend a table column, and Channel reads as part of Subject. The deployment
+// view gets Community as its one additional column.
+
+function renderAudit(data: any, base: string): string
+  community := data.community ?? null
+  events := data.events ?? []
+  may := data.may ?? {}
+  communityPath := if community
+    `${base}/communities/${encodeURIComponent(community.slug)}/audit`
+  else
+    `${base}/audit`
+  fields := field(name: "source", label: "Source", type: "text", value: data.source,
+                  hint: "For example, moderation.") +
+    field(name: "action", label: "Action", type: "text", value: data.action,
+          hint: "For example, delete.")
+  filters := form {
+    action: communityPath
+    variant: "filter"
+    fields: fields
+    submit: act("Filter", "view_audit_log", may)
+  }
+  columns := [
+    { key: "created_at", header: "When", format: "timestamp" }
+    { key: "action", header: "Action" }
+    { key: "actor", header: "Actor" }
+    { key: "subject", header: "Subject" }
+    { key: "reason", header: "Reason" }
+    { key: "outcome", header: "Outcome" }
+  ]
+  columns.splice 1, 0, { key: "community", header: "Community" } unless community
+  empty := `No audit events${community ? " for this community" : ""} with these filters.`
+  history := table columns: columns, rows: events, empty: empty
+
+  tablePage {
+    title: "Audit log"
+    lede: community ? `What happened in ${community.name}, newest first.` : "What happened across the communities you can read, newest first."
+    sections: section({ title: "Filter", body: filters }) + section({ title: "History", body: history })
+  }
+
+// Files: what rubotty is currently rehosting for this community. Admin-only
+// (see ViewData#files), so the whole page has one thing to check rather than a
+// per-row grant like Endpoints' Open/Delete pair.
+
+function renderFiles(data: any, base: string): string
+  community := data.community
+  files := data.files ?? []
+  may := data.may ?? {}
+  configured := data.configured ?? false
+  slug := encodeURIComponent community.slug
+
+  explainer := notice(
+    "The download link's UUID is the whole credential and it is never stored, only its digest " +
+      "is, so nothing on this page can show or reissue a working link. Deleting marks a file for " +
+      "removal on the next reclaim sweep; its link stops working immediately either way."
+    "info"
+  )
+  lede := "Every file rubotty is currently rehosting for this community, whether a platform " +
+    "would not carry it or somebody uploaded it straight through the guest portal or the admin API."
+
+  unless configured
+    unconfigured := notice("This deployment has no file store configured, so there is nothing to show.", "empty")
+    unconfiguredIntro := section { variant: "plain", body: explainer }
+    unconfiguredSection := section { title: "Rehosted files", body: unconfigured }
+    return tablePage {
+      title: "Files"
+      lede: lede
+      sections: unconfiguredIntro + unconfiguredSection
+    }
+
+  rowActions := (row: any) =>
+    deleteButton := act "Delete", "manage_files", may, variant: "destructive"
+    post `${base}/communities/${slug}/files/${encodeURIComponent(String(row.id))}/delete`, deleteButton
+
+  // Room and Uploaded by read as "-" rather than an empty cell for a file
+  // rehosted before either was tracked, matching the ERB view's own fallback.
+  rows := files.map (file: any) =>
+    {
+      id: file.id
+      filename: file.filename
+      room_key: file.room_key || "-"
+      created_by: file.created_by || "-"
+      byte_size: file.byte_size
+      expires_at: file.expires_at
+      serves_left: `${file.serves_remaining} / ${file.serve_limit}`
+    }
+
+  filesTable := table
+    columns: [
+      { key: "filename", header: "Filename" }
+      { key: "room_key", header: "Room", format: "code" }
+      { key: "created_by", header: "Uploaded by", format: "code" }
+      { key: "byte_size", header: "Size", format: "bytes" }
+      { key: "expires_at", header: "Expires", format: "timestamp" }
+      { key: "serves_left", header: "Serves left" }
+    ]
+    rows: rows
+    empty: "Nothing is currently held for this community."
+    actions: rowActions
+
+  // Usage against the community's quota, distinctly from the per-file cap
+  // shown nowhere on this page: this is what accumulates behind that cap.
+  // Checked against null/undefined rather than truthiness, since 0 bytes
+  // used is a real answer this page must still draw.
+  usageKnown := data.usage_bytes is not null and data.usage_bytes is not undefined and
+    data.quota_bytes is not null and data.quota_bytes is not undefined
+  usageSection := if usageKnown
+    full := data.usage_bytes >= data.quota_bytes
+    usage := keyValues [
+      ["Used", data.usage_bytes, "bytes"]
+      ["Quota", data.quota_bytes, "bytes"]
+    ], "stacked"
+    section {
+      title: "Storage"
+      body: usage + statusPill(full ? "quota full" : "under quota", full ? "warn" : "good")
+    }
+  else
+    ""
+
+  introSection := section { variant: "plain", body: explainer }
+  listSection := section { title: "Rehosted files", body: filesTable }
+
+  tablePage { title: "Files", lede: lede, sections: introSection + usageSection + listSection }
+
+// People: the identity directory, with a bridged nickname field per other
+// platform this community bridges, editable in place. Every save posts to
+// the same route the ERB page already used, one target platform at a time,
+// so this draws the existing write rather than a new one.
+
+function personLabel(identity: any): string
+  identity.display_name or identity.username or identity.native_id or "(unnamed)"
+
+function personDetails(identity: any): string
+  keyValues [
+    ["Platform", identity.adapter]
+    ["Handle", identity.username or "-"]
+    ["Last seen", identity.last_seen_at or "-"]
+  ]
+
+function personTargetForm(base: string, slug: string, query: any, whoCanSet: string, identity: any, target: any, may: any): string
+  fields := field
+    name: "nickname"
+    label: target.adapter
+    value: target.nickname
+    size: "short"
+    enabled: whoCanSet !== "nobody"
+  form
+    action: `${base}/communities/${slug}/people`
+    hidden: {
+      q: query ?? ""
+      identity_adapter: identity.adapter
+      native_id: identity.native_id
+      username: identity.username ?? ""
+      display: identity.display_name ?? ""
+      target_adapter: target.adapter
+    }
+    fields: fields
+    submit: act "Save", "configure_nickname", may, variant: "secondary", size: "small"
+
+function personSection(base: string, slug: string, query: any, whoCanSet: string, may: any, identity: any): string
+  targets := identity.targets ?? []
+  forms := targets.length is 0 ?
+    notice("No other platform is bridged here yet.", "empty") :
+    targets.map((target: any) => personTargetForm(base, slug, query, whoCanSet, identity, target, may)).join("")
+  section { title: personLabel(identity), variant: "collapsible", body: personDetails(identity) + forms }
+
+function renderPeople(data: any, base: string): string
+  community := data.community
+  identities := data.identities ?? []
+  may := data.may ?? {}
+  whoCanSet := data.who_can_set ?? "operators"
+  query := data.query
+  slug := encodeURIComponent community.slug
+
+  explainer := notice(
+    "Everyone the identity directory has seen talking here, one row per platform account. A " +
+      "nickname is what that person is shown as when their messages reach a DIFFERENT platform, " +
+      "the same as /nickname's platform and name arguments ask for in chat. Save it in place; leave a field " +
+      `blank and save to clear it. Showing up to ${data.cap ?? 50}, most recently seen first.`
+    "info"
+  )
+
+  whoCanSetForm := form
+    action: `${base}/communities/${slug}/features/nickname/config`
+    hidden: { selector: "all" }
+    fields: field({ name: "who_can_set", label: "Who may set a nickname", type: "select", value: whoCanSet,
+                   size: "short", options: data.who_can_set_options ?? [] })
+    submit: act "Save", "configure_nickname", may
+
+  searchForm := form
+    action: `${base}/communities/${slug}/people`
+    variant: "filter"
+    fields: field({ name: "q", label: "Handle or display name", value: query, size: "short" })
+    submit: act "Search", "view_community", may, variant: "secondary"
+
+  overviewTable := table
+    columns: [
+      { key: "adapter", header: "Platform", format: "code" }
+      { key: "username", header: "Handle", format: "code" }
+      { key: "display_name", header: "Display name" }
+      { key: "last_seen_at", header: "Last seen" }
+    ]
+    rows: identities.map (identity: any) =>
+      {
+        adapter: identity.adapter
+        username: identity.username or "-"
+        display_name: identity.display_name
+        last_seen_at: identity.last_seen_at
+      }
+    empty: query ? `No one seen talking here matches "${query}".` : "Nobody has been seen talking here yet."
+
+  nicknamesBody := identities.length is 0 ?
+    notice("Nobody to set a nickname for yet.", "empty") :
+    identities.map((identity: any) => personSection(base, slug, query, whoCanSet, may, identity)).join ""
+
+  page {
+    title: "People"
+    lede: `${community.name}'s identity directory, and the bridged nickname each person holds.`
+    sections: section({ title: "Who may set a nickname", body: whoCanSetForm }) +
+      section({ variant: "plain", body: explainer + searchForm }) +
+      section({ title: "Everyone seen here", body: overviewTable }) +
+      section({ title: "Bridged nicknames", body: nicknamesBody })
+  }
+
+// Moderation: mute and unmute a user on their own platform. A found identity's
+// row offers a quick indefinite mute; the manual form beneath still takes a
+// duration and a reason, both posting to the same route the ERB page used.
+
+function moderationSearchForm(base: string, slug: string, query: any, may: any): string
+  form
+    action: `${base}/communities/${slug}/moderation`
+    variant: "filter"
+    fields: field({ name: "q", label: "Handle or display name", value: query, size: "short" })
+    submit: act "Search", "view_community", may, variant: "secondary"
+
+function quickMuteForm(base: string, slug: string, row: any, may: any): string
+  form
+    action: `${base}/communities/${slug}/moderation/mute`
+    variant: "action"
+    hidden: {
+      adapter: row.adapter
+      native_id: row.native_id
+      username: row.username ?? ""
+      display: row.display_name ?? ""
+    }
+    submit: act "Mute", "moderate_user", may, variant: "secondary"
+
+function manualMuteForm(base: string, slug: string, may: any): string
+  fields := field({ name: "adapter", label: "Platform", size: "short", hint: "The subject's platform, e.g. telegram." }) +
+    field({ name: "native_id", label: "User id" }) +
+    field({ name: "username", label: "Handle" }) +
+    field({ name: "duration", label: "Duration", size: "short", hint: "1h, 30m, 1d, or a plain second count. Blank is indefinite." }) +
+    field({ name: "reason", label: "Reason" })
+  form
+    action: `${base}/communities/${slug}/moderation/mute`
+    fields: fields
+    submit: act "Mute", "moderate_user", may
+
+function moderationSearchResultsTable(base: string, slug: string, identities: any[], may: any): string
+  rows := identities.map (identity: any) =>
+    {
+      adapter: identity.adapter
+      native_id: identity.native_id
+      username: identity.username
+      display_name: identity.display_name
+    }
+  table
+    columns: [
+      { key: "adapter", header: "Platform", format: "code" }
+      { key: "username", header: "Handle", format: "code" }
+      { key: "display_name", header: "Display name" }
+    ]
+    rows: rows
+    empty: "No one matches."
+    actions: (row: any) => quickMuteForm(base, slug, row, may)
+
+function renderModeration(data: any, base: string): string
+  community := data.community
+  identities := data.identities ?? []
+  activeMutes := data.active_mutes ?? []
+  may := data.may ?? {}
+  query := data.query
+  slug := encodeURIComponent community.slug
+
+  explainer := notice(
+    "Mute and unmute a user on their own platform. This writes the same sanction record the " +
+      "warnings ladder applies automatically, so a mute issued here shows up in /warnings and " +
+      "lifts itself on schedule the same way."
+    "info"
+  )
+
+  searchResultsBody := if !query
+    ""
+  else if identities.length is 0
+    notice(`No one seen talking here matches "${query}". Use the manual form below.`, "empty")
+  else
+    moderationSearchResultsTable(base, slug, identities, may)
+
+  rowActions := (row: any) =>
+    unmuteButton := act "Unmute", "moderate_user", may, variant: "secondary"
+    post `${base}/communities/${slug}/moderation/${encodeURIComponent(String(row.id))}/unmute`, unmuteButton
+
+  activeTable := table
+    columns: [
+      { key: "adapter", header: "Platform", format: "code" }
+      { key: "subject", header: "Subject" }
+      { key: "until", header: "Until" }
+    ]
+    rows: activeMutes
+    empty: "No active mutes in this community."
+    actions: rowActions
+
+  page {
+    title: "Moderation"
+    lede: `Mute and unmute a member of ${community.name} on their own platform.`
+    sections: section({ title: "Find a user", body: explainer + moderationSearchForm(base, slug, query, may) + searchResultsBody }) +
+      section({ title: "Mute by platform and user id", body: manualMuteForm(base, slug, may) }) +
+      section({ title: "Currently muted", body: activeTable })
+  }
+
+// Events: which rooms may schedule one, the create form, and every event not
+// yet started. Detail folds a gaming event's game/server pair or a general
+// event's link into the one column a Table cell can draw.
+
+function eventCreateForm(base: string, slug: string, data: any, may: any): string
+  enabledRooms := data.enabled_rooms ?? []
+  return notice("No room has events turned on yet. Enable it for a room on Features first.", "empty") if enabledRooms.length is 0
+
+  fields := field({ name: "room", label: "Room", type: "select", size: "short", options: enabledRooms }) +
+    field({ name: "title", label: "Title", size: "full", hint: "Up to 200 characters." }) +
+    field({ name: "kind", label: "Kind", type: "select", size: "short", options: ["gaming", "general"] }) +
+    field({ name: "starts_at", label: "Start (UTC, or with an offset)",
+           hint: "2026-07-25 20:00, or with an explicit offset, e.g. 2026-07-25T20:00-04:00." }) +
+    field({ name: "timezone", label: "Timezone label", size: "short",
+           hint: "A label shown alongside the time, not a conversion." }) +
+    field({ name: "rsvp_mode", label: "RSVP mode", type: "select", size: "short", options: ["none", "affirm", "full"] }) +
+    field({ name: "game_title", label: "Game title", hint: "Gaming events only." }) +
+    field({ name: "server_address", label: "Server address", hint: "Gaming events only." }) +
+    field({ name: "url", label: "Link or place", size: "full", hint: "General events only." })
+  form
+    action: `${base}/communities/${slug}/events`
+    fields: fields
+    submit: act "Schedule", "configure_events", may
+
+function renderEvents(data: any, base: string): string
+  community := data.community
+  events := data.events ?? []
+  may := data.may ?? {}
+  slug := encodeURIComponent community.slug
+
+  explainer := notice(
+    "Schedule a gaming or general event in one of this community's rooms. Start times are stored " +
+      "and shown in UTC; timezone is a label shown alongside the time, not a conversion. Events are " +
+      "announced and RSVPs are collected by a separate change; this page only lists, creates and " +
+      "cancels."
+    "info"
+  )
+
+  roomAccessTable := table
+    columns: [
+      { key: "label", header: "Room" }
+      { key: "enabled", header: "Events enabled", format: "boolean" }
+      { key: "who_can_create", header: "Who can create", format: "enum" }
+    ]
+    rows: data.room_access ?? []
+    empty: "No rooms yet."
+
+  rowActions := (row: any) =>
+    cancelButton := act "Cancel", "configure_events", may, variant: "destructive", confirm: `Cancel ${row.title}?`
+    post `${base}/communities/${slug}/events/${encodeURIComponent(String(row.id))}/cancel`, cancelButton
+
+  eventsTable := table
+    columns: [
+      { key: "title", header: "Title" }
+      { key: "room", header: "Room" }
+      { key: "starts_at", header: "Starts" }
+      { key: "kind", header: "Kind", format: "enum" }
+      { key: "detail", header: "Detail" }
+      { key: "rsvp_mode", header: "RSVP", format: "enum" }
+    ]
+    rows: events
+    empty: "No upcoming events."
+    actions: rowActions
+
+  page {
+    title: "Events"
+    lede: `Scheduled events for ${community.name}.`
+    sections: section({ variant: "plain", body: explainer }) +
+      section({ title: "Room access", body: roomAccessTable }) +
+      section({ title: "Schedule an event", body: eventCreateForm(base, slug, data, may) }) +
+      section({ title: "Upcoming events", body: eventsTable })
+  }
+
+// Backfill proposals: every channel a sweep has proposed restoring, across
+// every community, grouped by where it stands.
+
+function proposalTitle(row: any): string
+  name := row.community_name ?? "(community no longer exists)"
+  `${name}: ${row.endpoint_id}`
+
+function proposalWindow(row: any): string
+  // created_at already reads as a relative distance (ViewData resolves it,
+  // scanned for recency); expires_at is a deadline, so it stays absolute.
+  notice(
+    `Proposed ${row.created_at}, expires ${Format.timestamp(row.expires_at)}.`
+    "info"
+  )
+
+function proposalStats(row: any): string
+  statRow [
+    [row.fetched, "fetched"]
+    [row.gaps, "would send"]
+    [row.ours, "ours, skipped"]
+    [row.claimed, "already relayed"]
+    [row.below_floor, "too old"]
+  ]
+
+// The one thing this page most wants read before a decision: a zero here on a
+// channel that has bridged before means the ownership check is not doing its
+// job right now.
+function proposalOursZeroWarning(row: any): string
+  return "" unless row.ours is 0
+
+  notice(
+    "Ours is zero. On a channel that has bridged before, that means the ownership check found " +
+      "nothing of its own among what it fetched, which is usually a sign it is broken right now. " +
+      "Look into that before accepting this proposal."
+    "danger"
+  )
+
+// The messages this proposal would send, collapsed by default: the stats and
+// the warning above are what a reader wants without a click, the message text
+// itself is what "opening a row" means.
+function proposalItems(row: any): string
+  items := row.items ?? []
+  count := items.length
+  itemsTable := table
+    columns: [
+      { key: "sent_at", header: "When", format: "timestamp" }
+      { key: "author_label", header: "Author" }
+      { key: "preview", header: "Preview" }
+    ]
+    rows: items
+    empty: "Nothing is stored for this proposal."
+
+  section { title: `${count} message${count is 1 ? "" : "s"}`, variant: "collapsible", body: itemsTable }
+
+function proposalActions(row: any, may: any, groupState: string, base: string): string
+  target := `${base}/backfill-proposals/${encodeURIComponent(String(row.id))}`
+  switch groupState
+    when "pending"
+      acceptButton := act "Accept", "manage_backfill_proposals", may
+      rejectButton := act "Reject", "manage_backfill_proposals", may, variant: "secondary"
+      pair := post(target + "/accept", acceptButton) + post(target + "/reject", rejectButton)
+      actionsRow(pair)
+    when "awaiting_relay"
+      retryButton := act "Retry relay", "manage_backfill_proposals", may, variant: "secondary"
+      post target + "/retry-relay", retryButton
+    else
+      ""
+
+// One proposal: an unboxed heading rather than another card, since it
+// already sits inside the group heading below and the messages disclosure
+// further down is the one card level this page draws. No status pill
+// either, since grouping by state already says what state a row is in.
+function proposalBlock(row: any, may: any, groupState: string, base: string): string
+  body := proposalWindow(row) + proposalStats(row) + proposalOursZeroWarning(row) +
+    proposalItems(row) + proposalActions(row, may, groupState, base)
+  section { title: proposalTitle(row), body: body, variant: "plain" }
+
+// The group heading, unboxed the same way: a card wrapping a run of
+// per-proposal headings would be a card around cards, the nesting the
+// mockup never draws.
+function proposalGroup(title: string, rows: any[], may: any, groupState: string, emptyText: string, base: string): string
+  body := rows.length is 0 ?
+    notice(emptyText, "empty") :
+    rows.map((row) => proposalBlock(row, may, groupState, base)).join ""
+  section { title: title, body: body, variant: "plain" }
+
+function renderBackfillProposals(data: any, base: string): string
+  may := data.may ?? {}
+  pending := data.pending ?? []
+  awaitingRelay := data.awaiting_relay ?? []
+  expired := data.expired ?? []
+
+  explainer := notice(
+    "The ours, skipped count is how many fetched messages the sweep decided were already the " +
+      "bot's own relayed copies. A zero there on a channel that has bridged before means the " +
+      "ownership check is not doing its job right now, and nothing should be accepted until " +
+      "that is fixed."
+    "info"
+  )
+
+  sections .= section { variant: "plain", body: explainer }
+  sections += proposalGroup(
+    "Waiting on a decision", pending, may, "pending", "Nothing is waiting on a decision.", base
+  )
+  if awaitingRelay.length > 0
+    sections += proposalGroup(
+      "Accepted, not yet confirmed sent", awaitingRelay, may, "awaiting_relay", "", base
+    )
+  if expired.length > 0
+    sections += proposalGroup("Expired", expired, may, "expired", "", base)
+
+  page {
+    title: "Backfill proposals"
+    lede: "What a boot-time sweep found missing and held back, because the gap was too large " +
+      "for a quiet restart to recover on its own. Accepting relays the exact list stored at " +
+      "sweep time, one message at a time."
+    sections: sections
+  }
+
+// Onboarding: the spaces the bot sits in that no community owns yet, where
+// the ERB page drew each one as loose <p class="cfg-row"> lines with the
+// accept controls in a bare, unlabelled radio/text/select/checkbox pile;
+// here the facts go through one KeyValues call and the controls through
+// Field, so the accept form is a labelled Form like every other on the
+// panel. make_operator is a toggle for the reason the Field primitive has
+// no checkbox type at all: an unticked checkbox submits nothing, which
+// cannot be told apart from the field never being drawn.
+
+function pendingFacts(row: any): string
+  pairs .= [["Space id", row.external_id, "text"]]
+  pairs.push ["Added by", row.inviter, "text"] if row.inviter
+  pairs.push ["Members", row.member_count, "text"] if row.member_count
+  pairs.push ["Channels", row.channels, "text"] if (row.channels ?? []).length > 0
+  pairs.push ["Pending since", row.created_at, "text"]
+  pairs.push if row.auto_leaves
+    ["Auto-leaves", row.expires_at, "timestamp"]
+  else
+    ["Auto-leaves", "no timer, waits here until somebody decides", "text"]
+
+  keyValues pairs, "stacked"
+
+function pendingAcceptForm(row: any, communities: any[], may: any, base: string): string
+  hasTargets := communities.length > 0
+  fields .= ""
+  hidden .= {}
+  if hasTargets
+    fields += field {
+      name: "target", label: "Target", type: "choice", value: "new"
+      options: [["new", "New community"], ["existing", "Attach to existing"]]
+    }
+    fields += field {
+      name: "new_community_name", label: "New community name", type: "text", value: row.name
+      hint: "Used when target is New community."
+    }
+    fields += field {
+      name: "community_id", label: "Existing community", type: "select"
+      options: communities.map (c: any) => [c.id, `${c.slug} - ${c.name}`]
+      hint: "Used when target is Attach to existing."
+    }
+  else
+    hidden = { target: "new" }
+    fields += field { name: "new_community_name", label: "New community name", type: "text", value: row.name }
+
+  if row.invited_by_someone
+    fields += field {
+      name: "make_operator", label: "Make operator", type: "toggle", value: "true"
+      hint: `Grants ${row.inviter ?? "the inviter"} operator access to the resulting community.`
+    }
+
+  form {
+    action: `${base}/pending/${encodeURIComponent(String(row.id))}/approve`
+    fields, hidden
+    submit: act "Accept", "manage_pending_spaces", may
+  }
+
+function pendingRejectForm(row: any, may: any, base: string): string
+  form {
+    action: `${base}/pending/${encodeURIComponent(String(row.id))}/deny`
+    fields: ""
+    submit: act "Reject", "manage_pending_spaces", may, variant: "destructive"
+  }
+
+function renderOnboarding(data: any, base: string): string
+  pending := data.pending ?? []
+  denied := data.denied ?? []
+  communities := data.communities ?? []
+  may := data.may ?? {}
+
+  explainer := notice(
+    "Accept one as a brand new community or as another platform on a community that already " +
+      "exists, or reject it. Accepting authorizes PRESENCE and channel discovery ONLY: it bridges " +
+      "nothing and enables no feature."
+    "info"
+  ) + notice(
+    "A pending space stays here until somebody accepts it, so this remains the full list."
+    "info"
+  )
+  introSection := section { variant: "plain", body: explainer }
+
+  queue := pending.length is 0 ?
+    section { variant: "plain", body: notice("Nothing is waiting on a decision.", "empty") } :
+    pending.map((row: any) =>
+      body := tag(row.platform) + pendingFacts(row) +
+        pendingAcceptForm(row, communities, may, base) + pendingRejectForm(row, may, base)
+      section { title: row.label, body }
+    ).join ""
+
+  deniedSection .= ""
+  if denied.length > 0
+    clearAction := (row: any) =>
+      form {
+        action: `${base}/pending/${encodeURIComponent(String(row.id))}/clear`
+        fields: ""
+        submit: act "Clear", "manage_pending_spaces", may, variant: "secondary"
+      }
+    deniedTable := table
+      columns: [
+        { key: "space", header: "Space" }
+        { key: "platform", header: "Platform", format: "code" }
+        { key: "decided_at", header: "Decided" }
+        { key: "decided_by", header: "By" }
+      ]
+      rows: denied
+      empty: "No blacklisted spaces."
+      actions: clearAction
+    deniedBody := notice(
+      "Rejected spaces. The bot has left (or gone inert) in each; clear an entry to let a future " +
+        "re-add be reviewed again instead of refused on sight."
+      "info"
+    ) + deniedTable
+    deniedSection = section { title: "Blacklisted spaces", body: deniedBody }
+
+  page {
+    title: "Onboarding"
+    lede: "Every space the bot has been added to that no community owns yet, whichever " +
+      "platform it came from."
+    sections: introSection + queue + deniedSection
+  }
+
+// Operator login links: the outstanding /web-login links and a revoke per row.
+// The ERB page drew "every community" as a green .pill on and "the ones
+// listed" as grey muted text, which read as two different KINDS of thing
+// rather than two values of one column; both are ordinary cell text here and
+// the only control in the row is the revoke, which is destructive and so
+// carries the confirm step the primitive requires.
+
+function renderOperatorTokens(data: any, base: string): string
+  tokens := data.tokens ?? []
+  may := data.may ?? {}
+
+  about := notice(
+    "It stays usable for its whole lifetime, so opening it more than once is fine; revoking it " +
+      "here ends it early."
+    "info"
+  ) + notice(
+    "A link can also carry viewer, which reads every community and changes nothing. Grant and " +
+      "revoke it on the Viewers page; only an administrator can, since it spans every community."
+    "info"
+  )
+
+  revokeAction := (row: any) =>
+    form {
+      action: `${base}/operator-tokens/${encodeURIComponent(String(row.id))}/revoke`
+      fields: ""
+      submit: act "Revoke", "manage_operator_tokens", may, variant: "destructive"
+    }
+
+  tokensTable := table
+    columns: [
+      { key: "operator", header: "Operator" }
+      { key: "platform", header: "Platform", format: "code" }
+      { key: "communities", header: "Communities" }
+      { key: "reads", header: "Reads" }
+      { key: "issued_at", header: "Issued" }
+      { key: "expires_at", header: "Expires", format: "timestamp" }
+    ]
+    rows: tokens
+    empty: "No active operator login links."
+    actions: revokeAction
+
+  tablePage {
+    title: "Operator login links"
+    lede: "A short-lived link (about an hour) that an operator gets back from DMing the bot " +
+      "/web-login, and signs them into this dashboard scoped to the communities they run."
+    sections: section({ title: "About web-login links", body: about }) +
+      section({ title: "Active links", body: tokensTable })
+  }
+
+function renderAdministrators(data: any, base: string): string
+  administrators := data.administrators ?? []
+  bakedIn := data.baked_in ?? []
+  adapters := data.adapters ?? []
+  tokens := data.tokens ?? []
+  audit := data.audit ?? []
+  may := data.may ?? {}
+
+  about := notice(
+    "An administrator holds every read and every write on every community, plus the pages nobody " +
+      "else reaches: accounts, API keys, integrations, operator login links, onboarding, and this " +
+      "one. There is nothing above it. Naming somebody here hands them the deployment."
+    "warning"
+  ) + notice(
+    "Only an administrator grants or revokes it. Nobody can ask for it either: viewer is requested " +
+      "by DM and approved on the Viewers page, while this one arrives here, from the shipped list, " +
+      "or on a token."
+    "info"
+  ) + notice(
+    "An administrator named here sends the bot web-login in a private message and gets a sign-in " +
+      "link, so the root password does not have to be copied around. That link is much shorter " +
+      "lived than an ordinary one because it opens the whole deployment, and it is checked against " +
+      "this table again at the moment it is used."
+    "info"
+  ) + notice(
+    "The root password stays the bootstrap and the way back in. Every row here is revocable, " +
+      "including the last one, because an account that goes astray has to be removable in a hurry, " +
+      "and the shipped list plus the password are what stand underneath."
+    "info"
+  )
+
+  bakedInRows := bakedIn.map((entry: any) =>
+    { id: null, handle: entry.handle, platform: entry.kind, name: "shipped with the deployment",
+      granted_at: null, granted_by: "n/a" }
+  )
+  grantedRows := administrators.map((row: any) =>
+    { id: row.id, handle: row.handle, platform: row.adapter, name: row.label,
+      granted_at: row.granted_at, granted_by: row.granted_by }
+  )
+
+  revokeRow := (row: any) =>
+    return statusPill("Protected", "neutral") if row.id is null
+
+    form {
+      action: `${base}/administrators/${encodeURIComponent(String(row.id))}/revoke`
+      fields: ""
+      submit: act "Revoke", "manage_administrators", may, variant: "destructive"
+    }
+
+  rosterTable := table
+    columns: [
+      { key: "handle", header: "Handle", format: "code" }
+      { key: "platform", header: "Platform" }
+      { key: "name", header: "Name" }
+      { key: "granted_at", header: "Granted", format: "timestamp" }
+      { key: "granted_by", header: "By" }
+    ]
+    rows: [...bakedInRows, ...grantedRows]
+    empty: "Nobody is named as an administrator, so the root password is the only way in."
+    actions: revokeRow
+
+  grantFields := field({ name: "adapter", label: "Platform", type: "select", size: "short",
+                        options: adapters, hint: "The platform the handle is on." }) +
+    field({ name: "handle", label: "Handle", required: true,
+           hint: "The username they own, never their display name. On Matrix the full ID, " +
+                 "@someone:example.org; everywhere else the bare username." }) +
+    field({ name: "label", label: "Name", hint: "Optional, shown beside the handle." })
+  grantForm := form
+    action: `${base}/administrators`
+    fields: grantFields
+    submit: act "Grant", "manage_administrators", may
+
+  tokensAbout := notice(
+    "For somebody whose handle you do not have yet. Mint a token, give it to them however you " +
+      "like, and they send the bot /auth and the token in a private message. That grants them the " +
+      "role and sends them their first sign-in link in the same reply."
+    "info"
+  ) + notice(
+    "A token here hands over the whole deployment, so only an administrator mints one: the token " +
+      "is the grant, taken in advance. It works once, it expires whether or not anybody uses it, " +
+      "and it can be taken back until it is used. Keep the lifetime as short as the handover allows."
+    "warning"
+  )
+
+  tokenRevoke := (row: any) =>
+    return "" unless row.live
+
+    form {
+      action: `${base}/administrator-tokens/${encodeURIComponent(String(row.public_id))}/revoke`
+      fields: ""
+      submit: act "Revoke", "manage_administrators", may, variant: "destructive"
+    }
+
+  tokensTable := table
+    columns: [
+      { key: "label", header: "For" }
+      { key: "state", header: "State" }
+      { key: "expires_at", header: "Expires", format: "timestamp" }
+      { key: "created_by", header: "Minted by" }
+      { key: "used_by", header: "Used by" }
+    ]
+    rows: tokens
+    empty: "No administrator tokens have been minted."
+    actions: tokenRevoke
+
+  mintFields := field({ name: "ttl_hours", label: "Good for (hours)", type: "number", value: "4",
+                       size: "short", hint: "Up to 336, which is a fortnight." }) +
+    field({ name: "label", label: "Who it is for", hint: "Optional, shown beside the token in the list above." })
+  mintForm := form
+    action: `${base}/administrator-tokens`
+    fields: mintFields
+    submit: act "Mint", "manage_administrators", may
+
+  auditTable := table
+    columns: [
+      { key: "created_at", header: "When", format: "timestamp" }
+      { key: "source", header: "Source" }
+      { key: "action", header: "Action" }
+      { key: "actor", header: "Actor" }
+      { key: "subject", header: "Subject" }
+      { key: "reason", header: "Reason" }
+      { key: "outcome", header: "Outcome" }
+    ]
+    rows: audit
+    empty: "Nothing recorded yet."
+
+  page {
+    title: "Administrators"
+    lede: "Every read and every write, everywhere on this deployment."
+    sections: section({ title: "About the administrator role", body: about }) +
+      section({ title: "Who administers this deployment", body: rosterTable }) +
+      section({ title: "Grant the administrator role", body: grantForm }) +
+      section({ title: "Hand it over with a token", body: tokensAbout + tokensTable + mintForm }) +
+      section({ title: "What has been handed out", body: auditTable })
+  }
+
+// Integrations: deployment-wide connections to outside services, one card
+// per known name. Both cards share the same shape (a URL, a key that is
+// never shown once stored, and a Test connection button posting to a second
+// target through Button's formaction), so the copy that differs between
+// them is the only thing named per integration rather than the markup.
+INTEGRATION_COPY := {
+  libretranslate: {
+    title: "LibreTranslate"
+    description: "Translates a room's messages for a peer room in another language. Once this " +
+      "connection works, switch translation on for a community from that community's own Features page."
+    validation: "Test connection tries the URL and key above exactly as typed (blank still means " +
+      "\"the stored key\"), without saving anything, so a mistake is caught here instead of showing " +
+      "up as untranslated messages later."
+  }
+  openarc: {
+    title: "OpenArc"
+    description: "Provides the local text endpoint used by room summaries and semantic FAQ matching. " +
+      "Once this connection works, each community still turns those room features on for itself."
+    validation: "Test connection tries the URL, key and model above exactly as typed, without " +
+      "saving anything, and says whether the server really has that model rather than only " +
+      "whether it answered."
+  }
+}
+
+// The model choice, read from the server's own /v1/models rather than pinned
+// here. A server that cannot be reached, or that has nothing loaded, falls back
+// to a plain text field so a deployment is never locked out of setting one.
+function integrationModelField(integration: any): string
+  models := integration.models ?? []
+  fallbackHint := integration.model_error
+    ? `Could not read this server's model list, so nothing can be offered here: ${integration.model_error}`
+    : integration.configured
+      ? "This OpenArc server has no models loaded, so there is nothing to offer here. A model has " +
+        "to be loaded on the server before it can be picked."
+      : "Save an endpoint URL first, and the models loaded on that server show up here as a list."
+
+  return field(
+    name: "model", label: "Model", value: integration.model, size: "full",
+    hint: `${fallbackHint} Left blank, ${integration.default_model} is used.`
+  ) if models.length is 0
+
+  field(
+    name: "model", label: "Model", type: "select", value: integration.model, size: "full",
+    options: [["", "Use the built-in default"], ...models.map((id: string) => [id, id])],
+    hint: "Read from this server's /v1/models, so these are the models it has loaded right now. " +
+      "A model registered there but not loaded is not on this list. " +
+      `Left on the default, ${integration.default_model} is used.`
+  )
+
+// A connection's own state. Saying only that a URL is stored is what let the
+// model endpoint sit dead behind a "Connected" pill while every feature that
+// depends on it failed, so a card that carries a reachability answer says
+// whether the endpoint replied when this page read it rather than whether
+// somebody filled the field in. A card with none keeps the older wording.
+function integrationStatePill(integration: any): string
+  return statusPill "Not configured", "neutral" unless integration.configured
+  reachable := integration.reachable ?? null
+  return statusPill "Connected", "good" if reachable is null
+
+  reachable ? statusPill("Answering", "good") : statusPill("Not answering", "bad")
+
+// Both cards' fields keep the same name ("url", "api_key") the ERB form posted
+// under, since the route on the other end still reads params[:url] rather
+// than a nested shape. Field's id override keeps the two cards' controls
+// distinct even though their names collide.
+function integrationCard(integration: any, base: string, may: any): string
+  copy := INTEGRATION_COPY[integration.name] ?? { title: integration.name, description: "", validation: null }
+  connected := integrationStatePill integration
+  keyState := statusPill (integration.key_stored ? "Key stored" : "No key stored"), (integration.key_stored ? "good" : "neutral")
+
+  fields .= field(
+    name: "url", label: "Endpoint URL", value: integration.url, size: "full",
+    id: `integration-${integration.name}-url`
+    hint: integration.name is "openarc" ? "The endpoint must provide /v1/models and /v1/chat/completions." : null
+  ) + field(
+    name: "api_key", label: "API key", type: "secret", size: "full",
+    id: `integration-${integration.name}-api_key`
+    hint: "Leave this blank to keep whatever key is already stored. Type a new one to replace it."
+  )
+  fields += field(
+    name: "allowed_pairs", label: "Allowed language pairs", type: "multiline", size: "full",
+    value: integration.allowed_pairs,
+    hint: "Comma separated source:target pairs, e.g. en:pt,pt:en. Left empty, every pair this " +
+      "instance can translate is allowed."
+  ) if integration.name is "libretranslate"
+  fields += integrationModelField(integration) if integration.name is "openarc"
+
+  testButton := act "Test connection", "manage_integrations", may, variant: "secondary",
+    formaction: `${base}/integrations/${integration.name}/test`
+
+  connectionForm := form {
+    action: `${base}/integrations/${integration.name}`
+    fields: fields
+    actions: testButton
+    validation: copy.validation
+    submit: act "Save", "manage_integrations", may
+  }
+
+  // The endpoint's own answer, said plainly rather than left in the model
+  // field's hint, since one server not answering is every dependent feature
+  // stopping at once.
+  silent .= ""
+  silent = notice(
+    `This endpoint did not answer when this page read it: ${integration.model_error} ` +
+      "Every feature that depends on it fails while that is true."
+    "danger"
+  ) if integration.reachable is false
+
+  // Named here rather than left to the first summary that breaks: a stored
+  // model the server no longer has fails everything downstream of it.
+  gone .= ""
+  gone = notice(
+    "The stored model is not loaded on this server. " +
+      `${integration.effective_model} is what room summaries and semantic FAQ matching ask for, ` +
+      "and this server does not have it loaded, so both would fail. Pick one from the list above " +
+      "and save, or load that one on the server."
+    "warning"
+  ) if integration.model_missing
+
+  section {
+    title: copy.title
+    body: connected + " " + keyState + notice(copy.description, "info") + silent + gone + connectionForm
+  }
+
+function renderIntegrations(data: any, base: string): string
+  may := data.may ?? {}
+  integrations := data.integrations ?? []
+
+  about := notice(
+    "An integration is a connection to an outside service the whole deployment shares: the " +
+      "endpoint, the credential, and any other setting that has to be the same everywhere. It is " +
+      "deployment-wide, not per community, and administrator only."
+    "info"
+  ) + notice(
+    "Whether a community actually uses an integration is a separate switch, on that community's " +
+      "own feature catalog. Turning a connection on here only makes it available; a community " +
+      "still opts in for itself, and turning it off here takes it away from every community at once."
+    "info"
+  ) + notice(
+    "No key is ever shown here once it is set. A key field shows whether one is stored and lets it " +
+      "be replaced, the way a password field behaves."
+    "warning"
+  )
+
+  page {
+    title: "Integrations"
+    lede: "Deployment-wide connections to outside services, shared by every community."
+    sections: section({ variant: "plain", body: about }) +
+      integrations.map((integration: any) => integrationCard(integration, base, may)).join ""
+  }
+
+// Communities: the panel's front door. One row per community, with the counts
+// that say which one wants attention, and the onboarding queue as a count and
+// a way in rather than a second copy of its rows.
+
+function renderCommunities(data: any, base: string): string
+  rows := data.communities ?? []
+  may := data.may ?? {}
+  waiting := Number data.waiting_spaces ?? 0
+
+  waitingNotice := if waiting > 0
+    notice(
+      `${waiting} space${waiting is 1 ? " is" : "s are"} waiting on a decision. ` +
+        "Accepting or rejecting one is Onboarding's job."
+      "warning"
+    ) + act("Open onboarding", "manage_pending_spaces", may, variant: "secondary", to: `${base}/onboarding`)
+  else
+    ""
+
+  rowActions := (row: any) =>
+    // A community this reader may not open is still listed, since knowing it
+    // exists is what an operator needs to be able to ask for access at all.
+    act "Open", "view_community", may, variant: "secondary",
+        to: `${base}/communities/${encodeURIComponent(row.slug)}`, enabled: row.readable
+
+  communitiesTable := table
+    columns: [
+      { key: "name", header: "Community" }
+      { key: "slug", header: "Slug", format: "code" }
+      { key: "status", header: "Status", tone: "status_tone" }
+      { key: "channels", header: "Channels", align: "end" }
+      { key: "operators", header: "Operators", align: "end" }
+      { key: "pending_operator_requests", header: "Requests", align: "end" }
+    ]
+    rows: rows
+    empty: "No communities yet. Seed one with rubotty seed."
+    actions: rowActions
+
+  introSection := waitingNotice is "" ? "" : section { variant: "plain", body: waitingNotice }
+  listSection := section { title: "Bridged communities", body: communitiesTable }
+
+  tablePage {
+    title: "Communities"
+    lede: "Every community this deployment bridges, one row each, with the counts that say " +
+      "which one wants attention."
+    sections: introSection + listSection
+  }
+
+// Deployment analytics: the same totals per community, over one window. Nine
+// counts do not fit the seven columns a Table draws, so they read as two
+// tables under one window filter: what happened in the rooms, then what is
+// waiting on somebody.
+
+function analyticsWindowLinks(base: string, windows: any[], current: string): string
+  links := (windows ?? []).map (key: string) =>
+    [`${base}/analytics?window=${encodeURIComponent(key)}`, key, key]
+  tabLinks links, current
+
+function renderAnalyticsOverview(data: any, base: string): string
+  rows := data.rows ?? []
+  may := data.may ?? {}
+  window := data.window ?? ""
+
+  filters := analyticsWindowLinks base, data.windows ?? [], window
+  explainer := notice(
+    "Active senders, moderation actions and active guests cover the selected window. Relayed " +
+      "counts are derived state kept for about a day, so that column is always the last 24 hours."
+    "info"
+  )
+
+  rowActions := (row: any) =>
+    act "Open", "view_analytics", may, variant: "secondary",
+        to: `${base}/communities/${encodeURIComponent(row.slug)}/analytics?window=${encodeURIComponent(window)}`
+
+  activityTable := table
+    columns: [
+      { key: "name", header: "Community" }
+      { key: "active_members", header: "Active senders", align: "end" }
+      { key: "moderation_actions", header: "Moderation actions", align: "end" }
+      { key: "messages_recent", header: "Relayed, 24h", align: "end" }
+      { key: "active_guests", header: "Active guests", align: "end" }
+    ]
+    rows: rows
+    empty: "No communities yet."
+    actions: rowActions
+
+  waitingTable := table
+    columns: [
+      { key: "name", header: "Community" }
+      { key: "operators", header: "Operators", align: "end" }
+      { key: "upcoming_events", header: "Upcoming events", align: "end" }
+      { key: "pending_spaces", header: "Pending spaces", align: "end" }
+      { key: "request_wait", header: "Request wait", format: "duration", align: "end" }
+    ]
+    rows: rows
+    empty: "No communities yet."
+
+  introSection := section { variant: "plain", body: filters + explainer }
+  activitySection := section { title: "Activity", body: activityTable }
+  waitingSection := section { title: "Waiting on somebody", body: waitingTable }
+
+  tablePage {
+    title: "Analytics"
+    lede: "Activity and moderation totals per community. Open one for its full breakdown."
+    sections: introSection + activitySection + waitingSection
+  }
+
+// Accounts: the deployment-wide credentialed gateway connections, one bot
+// token per platform serving every community at once. Adding one is a
+// two-step GET filter (pick a platform, then that platform's own
+// account_schema) the same shape Features' own scope filter already is,
+// since there is no single set of account fields to show until a platform
+// is chosen: Telegram's schema and Discord's share only token_env.
+
+function accountAdapterFilter(action: string, chosen: any, adapters: string[], may: any): string
+  picker := field { name: "adapter", label: "Platform", type: "select", value: chosen, size: "short", options: adapters ?? [] }
+  form
+    action: action
+    variant: "filter"
+    fields: picker
+    submit: button("Filter", "manage_accounts", may, variant: "secondary")
+
+// A schema-driven field list, shared between the new-account form and every
+// existing account's own edit form: one {Config::Schema}, drawn the same way
+// {renderFeatureConfig}'s own fieldsHtml draws feature config.
+function schemaFieldsHtml(entries: any[]): string
+  (entries ?? []).map((entry: any) =>
+    field
+      name: entry.name
+      label: entry.label
+      type: entry.type
+      value: fieldValue(entry)
+      size: entry.size ?? "medium"
+      options: entry.options ?? null
+      hint: entry.hint ?? null
+      required: entry.required ?? false
+  ).join ""
+
+function newAccountForm(data: any, base: string, may: any): string
+  adapter := data.new_adapter
+  return "" unless adapter
+
+  nameField := field(
+    name: "name", label: "Name", required: true,
+    hint: `The account's key, e.g. ${adapter} or ${adapter}_2. Channels reference it by this name, ` +
+      "so it cannot be changed later."
+  )
+  form {
+    action: `${base}/accounts`
+    hidden: { adapter: adapter }
+    fields: nameField + schemaFieldsHtml(data.new_fields)
+    submit: act("Add account", "manage_accounts", may)
+  }
+
+// The env pill: whether the named token env var is actually set in this
+// process, the one fact this page exists to answer for an account that
+// otherwise cannot possibly connect. Absent entirely for an account whose
+// schema takes no token_env at all, matching the ERB row's own <% if %>.
+function accountEnvLine(account: any): string
+  return "" unless account.token_env
+
+  tone := account.token_env_set ? "good" : "bad"
+  message := account.token_env_set ? "key present" : "not set in this process"
+  actionsRow `Token env ${code(account.token_env, "inline")} ${statusPill(message, tone)}`
+
+function accountDetail(base: string, account: any, may: any): string
+  target := `${base}/accounts/${encodeURIComponent(String(account.id))}`
+  editor := if account.editable
+    form {
+      action: target
+      variant: "edit"
+      fields: schemaFieldsHtml(account.fields)
+      submit: act("Save", "manage_accounts", may)
+    }
+  else
+    notice(
+      `No adapter is registered under ${account.adapter} in this process, so this account's ` +
+        "settings cannot be shown or edited here. It is skipped at boot."
+      "empty"
+    )
+  removeButton := act "Remove", "manage_accounts", may, variant: "destructive",
+                      confirm: "Remove this account? It stays connected until the bot restarts."
+  accountEnvLine(account) + editor + post(target + "/delete", removeButton)
+
+function accountSummary(account: any): string
+  identity := `${account.adapter}/${account.name}`
+  tone := account.from_yaml ? "neutral" : "good"
+  label := account.from_yaml ? "from bridge.config.yaml" : "added here"
+  `${code(identity, "inline")} ${statusPill(label, tone)}`
+
+function accountRow(base: string, account: any, may: any): string
+  section {
+    variant: "collapsible"
+    summary: accountSummary(account)
+    body: accountDetail(base, account, may)
+  }
+
+function renderAccounts(data: any, base: string): string
+  accounts := data.accounts ?? []
+  may := data.may ?? {}
+  listPath := `${base}/accounts`
+
+  explainer := notice(
+    "An account is one credentialed connection to a platform: a bot token and the transport " +
+      "settings that go with it. It is deployment-wide, not per community, because one bot serves " +
+      "every community at once; which community a message belongs to is worked out afterwards, " +
+      "from the channel it arrived in."
+    "info"
+  ) + notice(
+    "Accounts added here live in the database. The ones imported from bridge.config.yaml are shown " +
+      "too, and that file still works exactly as before: on a name clash the file wins."
+    "info"
+  ) + notice(
+    "A new or changed account needs a bot restart to take effect. Every other setting in this " +
+      "dashboard reaches the running bot within seconds; an account is a live connection, so it is " +
+      "opened when the bot boots. A restart, not a redeploy."
+    "warning"
+  ) + notice(
+    "No secret is ever entered or stored here. A token field asks for the NAME of an environment " +
+      "variable, and the value has to be set in the deployment's environment separately."
+    "warning"
+  )
+
+  addBody := accountAdapterFilter(listPath, data.new_adapter, data.adapters ?? [], may) + newAccountForm(data, base, may)
+
+  accountsList := accounts.length is 0 ?
+    notice(
+      "No accounts in the database yet. They are imported from bridge.config.yaml the next time " +
+        "the bot boots, or you can add one above."
+      "empty"
+    ) :
+    accounts.map((account: any) => accountRow(base, account, may)).join ""
+
+  introSection := section { variant: "plain", body: explainer }
+  addSection := section { title: "Add an account", body: addBody }
+  listSection := section { title: "Accounts", body: accountsList }
+
+  tablePage {
+    title: "Accounts"
+    lede: "Deployment-wide credentialed connections, one bot token per platform for every community at once."
+    sections: introSection + addSection + listSection
+  }
+
+// API keys: the bearer credentials the REST admin API authenticates against.
+// The raw key exists for exactly one render, so it is drawn through Code at
+// the top rather than as a value in the table, which only ever holds digested
+// facts about a key.
+
+function apiKeyIssuedSection(data: any): string
+  return "" unless data.issued_token
+
+  section {
+    title: `API key for ${data.issued_label ?? "this key"}`
+    body: notice(
+      "Copy this now. Only its digest is stored, so losing it means revoking this key and " +
+        "issuing another."
+      "warning"
+    ) + code(data.issued_token, "block")
+  }
+
+function apiKeyMintForm(data: any, base: string, may: any): string
+  accounts := data.platform_accounts ?? []
+  accountHint := accounts.length > 0 ?
+    `Leave blank for an ordinary key. Configured api_wrapper accounts: ${accounts.join(", ")}.` :
+    "Leave blank for an ordinary key. Naming an api_wrapper account scopes the key to that one integration."
+  fields := field(
+    name: "scope", label: "Scope", type: "select", value: "developer", size: "short",
+    options: [["developer", "Developer, one community"], ["administrator", "Administrator, every community"]]
+  ) + field(
+    name: "community", label: "Community", type: "select", size: "short",
+    options: data.communities ?? [],
+    hint: "Read for a developer key. An administrator key is never scoped to one community."
+  ) + field(
+    name: "label", label: "Label", type: "text", size: "medium",
+    hint: "Shown in the list below, so the next administrator knows what holds this key."
+  ) + field(
+    name: "platform_account", label: "Platform account", type: "text", size: "medium", hint: accountHint
+  )
+
+  form {
+    action: `${base}/api-keys`
+    fields: fields
+    validation: "The community and platform account fields are read for a developer key only."
+    submit: act "Issue key", "manage_api_keys", may
+  }
+
+function renderApiKeys(data: any, base: string): string
+  keys := data.keys ?? []
+  may := data.may ?? {}
+
+  explainer := notice(
+    "A developer key is scoped to one community and reaches most reads and writes within it. " +
+      "An administrator key spans every community."
+    "info"
+  ) + notice(
+    "The raw key is shown exactly once, right after it is issued. Only its digest is stored, so " +
+      "a lost key is revoked here and replaced rather than recovered."
+    "warning"
+  )
+
+  rowActions := (row: any) =>
+    return "" unless row.live
+
+    revokeButton := act "Revoke", "manage_api_keys", may, variant: "destructive",
+                        confirm: "Revoke this key? Anything authenticating with it stops working immediately."
+    post `${base}/api-keys/${encodeURIComponent(String(row.public_id))}/revoke`, revokeButton
+
+  keysTable := table
+    columns: [
+      { key: "label", header: "Label" }
+      { key: "scope", header: "Scope" }
+      { key: "platform_account", header: "Platform account", format: "code" }
+      { key: "created_by", header: "Issued by" }
+      { key: "last_used_at", header: "Last used" }
+      { key: "state", header: "State", tone: "state_tone" }
+    ]
+    rows: keys
+    empty: "No API keys yet."
+    actions: rowActions
+
+  introSection := section { variant: "plain", body: explainer }
+  mintSection := section { title: "Issue a key", body: apiKeyMintForm(data, base, may) }
+  listSection := section { title: "Issued keys", body: keysTable }
+
+  tablePage {
+    title: "API keys"
+    lede: "The bearer credentials the REST admin API authenticates a request against."
+    sections: introSection + apiKeyIssuedSection(data) + mintSection + listSection
+  }
+
+// Viewers: who reads every community and changes nothing. The same five jobs
+// Administrators draws, against the smaller role, so the two pages read the
+// same way: what the role is, who holds it, how to grant it, how to hand it
+// over without a handle, and what has been handed out.
+
+function viewerRequestsSection(data: any, base: string, may: any): string
+  requests := data.requests ?? []
+
+  about := notice(
+    "Filed before reading every community stopped being something a DM could ask for. Approving " +
+      "grants the row below; rejecting leaves them exactly where they were and blocks no later ask."
+    "info"
+  )
+
+  decide := (row: any) =>
+    target := `${base}/viewer-requests/${encodeURIComponent(String(row.id))}`
+    approve := post target + "/approve", act("Approve", "manage_viewers", may, variant: "primary")
+    reject := post target + "/deny", act("Reject", "manage_viewers", may, variant: "secondary")
+    actionsRow approve + reject
+
+  requestsTable := table
+    columns: [
+      { key: "requester", header: "Requester" }
+      { key: "handle", header: "Handle", format: "code" }
+      { key: "platform", header: "Platform" }
+      { key: "requested_at", header: "Requested" }
+    ]
+    rows: requests
+    empty: "No pending viewer requests."
+    actions: decide
+
+  section { title: "Pending requests", body: about + requestsTable }
+
+function viewerRosterSection(data: any, base: string, may: any): string
+  bakedIn := (data.baked_in ?? []).map (entry: any) =>
+    { id: null, handle: entry.handle, platform: entry.kind, name: "shipped with the deployment",
+      granted_at: null, granted_by: "n/a" }
+  granted := data.granted ?? []
+
+  about := notice(
+    "The rows shipped with the deployment are named in its own configuration. That file is the " +
+      "floor under this table: it can only add viewers, and a handle on it keeps reading every " +
+      "community whatever is done here."
+    "info"
+  )
+
+  revokeRow := (row: any) =>
+    return statusPill("Protected", "neutral") if row.id is null
+
+    form {
+      action: `${base}/viewers/${encodeURIComponent(String(row.id))}/revoke`
+      fields: ""
+      submit: act "Revoke", "manage_viewers", may, variant: "destructive"
+    }
+
+  rosterTable := table
+    columns: [
+      { key: "handle", header: "Handle", format: "code" }
+      { key: "platform", header: "Platform" }
+      { key: "name", header: "Name" }
+      { key: "granted_at", header: "Granted", format: "timestamp" }
+      { key: "granted_by", header: "By" }
+    ]
+    rows: [...bakedIn, ...granted]
+    empty: "Nobody holds viewer status on this deployment."
+    actions: revokeRow
+
+  section { title: "Who reads everything", body: about + rosterTable }
+
+function viewerTokensSection(data: any, base: string, may: any): string
+  about := notice(
+    "For somebody whose handle you do not have yet. Mint a token, give it to them however you " +
+      "like, and they send the bot /auth and the token in a private message. That grants them the " +
+      "role and sends them their first sign-in link in the same reply."
+    "info"
+  ) + notice(
+    "A token here hands over reading every community, so only an administrator mints one: the " +
+      "token is the grant, taken in advance. It works once, it expires whether or not anybody uses " +
+      "it, and it can be taken back until it is used."
+    "warning"
+  )
+
+  tokenRevoke := (row: any) =>
+    return "" unless row.live
+
+    form {
+      action: `${base}/auth-tokens/${encodeURIComponent(String(row.public_id))}/revoke`
+      fields: ""
+      submit: act "Revoke", "manage_viewers", may, variant: "destructive"
+    }
+
+  tokensTable := table
+    columns: [
+      { key: "label", header: "For" }
+      { key: "state", header: "State" }
+      { key: "expires_at", header: "Expires", format: "timestamp" }
+      { key: "created_by", header: "Minted by" }
+      { key: "used_by", header: "Used by" }
+    ]
+    rows: data.tokens ?? []
+    empty: "No deployment-wide tokens have been minted."
+    actions: tokenRevoke
+
+  mintFields := field({ name: "ttl_hours", label: "Good for (hours)", type: "number", value: "24",
+                       size: "short", hint: "Up to 336, which is a fortnight." }) +
+    field({ name: "label", label: "Who it is for", hint: "Optional, shown beside the token in the list above." })
+  mintForm := form
+    action: `${base}/auth-tokens`
+    fields: mintFields
+    submit: act "Mint", "manage_viewers", may
+
+  issued := if data.issued_token
+    notice(
+      "Here is the token, shown once and never again. Anybody holding it reads every community on " +
+        "this deployment, so send it over something private and keep no copy. If it goes astray, " +
+        "revoke it below and mint another."
+      "warning"
+    ) + code(data.issued_token, "block")
+  else
+    ""
+
+  section { title: "Hand it over with a token", body: about + issued + tokensTable + mintForm }
+
+function renderViewers(data: any, base: string): string
+  may := data.may ?? {}
+
+  about := notice(
+    "A viewer reads every community in this deployment and changes nothing anywhere. Save " +
+      "controls draw flat for them and the server refuses the write regardless, so the role is " +
+      "safe to hand out for oversight or a handover."
+    "info"
+  ) + notice(
+    "Only an administrator grants or revokes it, since viewer spans every community and an " +
+      "operator of one must never be able to hand out oversight of the others. Somebody can hold " +
+      "viewer and operate a community at the same time."
+    "info"
+  ) + notice(
+    "Somebody who needs to read one community wants the smaller role on that community's own " +
+      "Operators page, which an operator there can hand out. This is the larger ask, and the one " +
+      "that cannot be requested by DM."
+    "info"
+  )
+
+  grantFields := field({ name: "adapter", label: "Platform", type: "select", size: "short",
+                        options: data.adapters ?? [], hint: "The platform the handle is on." }) +
+    field({ name: "handle", label: "Handle", required: true,
+           hint: "The username they own, never their display name. On Matrix the full ID, " +
+                 "@someone:example.org; everywhere else the bare username." }) +
+    field({ name: "label", label: "Name", hint: "Optional, shown beside the handle." })
+  grantForm := form
+    action: `${base}/viewers`
+    fields: grantFields
+    submit: act "Grant", "manage_viewers", may
+
+  auditTable := table
+    columns: [
+      { key: "created_at", header: "When", format: "timestamp" }
+      { key: "source", header: "Source" }
+      { key: "action", header: "Action" }
+      { key: "actor", header: "Actor" }
+      { key: "subject", header: "Subject" }
+      { key: "reason", header: "Reason" }
+      { key: "outcome", header: "Outcome" }
+    ]
+    rows: data.audit ?? []
+    empty: "Nothing recorded yet."
+
+  page {
+    title: "Viewers"
+    lede: "Reading every community on this deployment, and changing nothing anywhere."
+    sections: section({ title: "About the viewer role", body: about }) +
+      viewerRequestsSection(data, base, may) +
+      viewerRosterSection(data, base, may) +
+      section({ title: "Grant viewer status", body: grantForm }) +
+      viewerTokensSection(data, base, may) +
+      section({ title: "What has been handed out", body: auditTable })
+  }
+
+// Documentation and the licence, both drawn through the Prose primitive with
+// the plain Section variant, since each document already opens with its own
+// heading and a Section title above it would say the same thing twice.
+// Documentation carries two documents, the scripting reference and the
+// README (so the panel still explains itself without a trip to GitHub);
+// the licence carries one.
+
+function docSection(document: string, markup: any): string
+  section { variant: "plain", body: prose(document, markup) }
+
+function renderDocumentation(data: any): string
+  page {
+    title: "Documentation"
+    lede: "The scripting reference, and this deployment's own README so neither needs a trip to GitHub."
+    variant: "wide"
+    sections: docSection(data.document, data.markup) + docSection("readme", data.readme_markup)
+  }
+
+function renderLicence(data: any): string
+  page {
+    title: "Licence"
+    lede: "The terms this deployment runs under."
+    variant: "wide"
+    sections: docSection(data.document, data.markup)
+  }
+
+// Platforms: the join links the /platforms command advertises, the
+// credentialed connections this community's channels ride on, and its Fluxer
+// instances.
+
+// The three fields of one join link. They keep the parallel array names the
+// route zips by index ("platform[]", "label[]", "url[]"), so every row in a
+// scope shares a name; idSuffix (a scope key and row index, or "new" and a
+// row index for the add form) keeps each row's Field ids distinct.
+function platformLinkRow(row: any, adapters: any[], title: string, idSuffix: string): string
+  section {
+    title: title
+    body: field({
+      name: "platform[]", label: "Platform", type: "select", size: "short", value: row.platform
+      options: [["", ""]].concat adapters.map((name: string) => [name, name])
+      id: `platform-link-${idSuffix}-platform`
+    }) + field({
+      name: "label[]", label: "Label", size: "short", value: row.label
+      hint: "How the link reads in chat, for example: Our Discord."
+      id: `platform-link-${idSuffix}-label`
+    }) + field({
+      name: "url[]", label: "Join URL", size: "full", value: row.url
+      id: `platform-link-${idSuffix}-url`
+    })
+  }
+
+function platformLinkScope(scope: any, base: string, slug: string, adapters: any[], may: any): string
+  rows := scope.rows ?? []
+  drawn := rows.map (row: any, index: number) =>
+    platformLinkRow row, adapters, (index is rows.length - 1 ? "New link" : `Link ${index + 1}`), `${scope.key}-${index}`
+
+  section {
+    variant: "collapsible"
+    title: scope.label
+    body: statusPill(scope.status, scope.status_tone) + form({
+      action: `${base}/communities/${slug}/platforms`
+      hidden: { selector: scope.key }
+      body: drawn.join ""
+      validation: "Clear a row's URL to drop it. Nothing here changes until you save."
+      submit: act "Save links", "manage_platforms", may
+    })
+  }
+
+function platformLinksSection(data: any, base: string, slug: string, may: any): string
+  adapters := data.known_adapters ?? []
+  scopes := data.link_scopes ?? []
+
+  explainer := notice(
+    "The invite links the /platforms command advertises, so a member on one end can hop to another. " +
+      "Each entry is a platform, a label and a join URL; a row with no URL is dropped. A per-room " +
+      "set overrides the community-wide all default."
+    "info"
+  )
+
+  addForm := form {
+    action: `${base}/communities/${slug}/platforms`
+    body: section({
+      title: "Scope"
+      body: field({
+        name: "selector", label: "Scope", type: "select", size: "short"
+        options: (data.scope_options ?? []).map((entry: any) => [entry.value, entry.label])
+      })
+    }) + [0, 1, 2].map((index: number) =>
+      platformLinkRow {}, adapters, `Link ${index + 1}`, `new-${index}`
+    ).join ""
+    validation: "A row with no URL is dropped, so a blank row adds nothing."
+    submit: act "Save links", "manage_platforms", may
+  }
+
+  section({ variant: "plain", body: explainer }) +
+    scopes.map((scope: any) => platformLinkScope(scope, base, slug, adapters, may)).join("") +
+    section({ title: "Add links for a scope", body: addForm })
+
+// idPrefix keeps one connection's fields distinct from another's: every
+// connection posts the same four names, so an id derived from the name
+// alone would have the second connection's label focus the first's control.
+function connectionFields(adapters: any[], connection: any, idPrefix: string): string
+  field({
+    name: "adapter", label: "Adapter", type: "select", size: "short", value: connection?.adapter
+    options: adapters.map((name: string) => [name, name])
+    id: `${idPrefix}-adapter`
+  }) + field({
+    name: "account", label: "Account", size: "short", value: connection?.account
+    hint: "The credentialed account this connection runs on, for example: discord."
+    id: `${idPrefix}-account`
+  }) + field({
+    name: "external_id", label: "External id", size: "short", value: connection?.external_id
+    hint: "The guild, server or chat id this connection is bound to."
+    id: `${idPrefix}-external_id`
+  }) + field({
+    name: "label", label: "Label", size: "short", value: connection?.label
+    hint: "Optional, for your own reference."
+    id: `${idPrefix}-label`
+  })
+
+function behaviorField(setting: any, idPrefix: string): string
+  field
+    name: `setting[${setting.name}]`
+    label: setting.name
+    type: setting.type
+    size: "short"
+    value: setting.value
+    options: (setting.options ?? []).map (option: string) => [option, option]
+    hint: setting.description
+    id: `${idPrefix}-setting-${setting.name}`
+
+function connectionBehaviour(connection: any, base: string, slug: string, may: any): string
+  return notice(connection.behavior_note, "empty") if connection.behavior_note
+
+  idPrefix := `connection-${connection.id}`
+  form {
+    action: `${base}/communities/${slug}/platforms/${encodeURIComponent(connection.id)}/settings`
+    fields: (connection.behavior ?? []).map((setting: any) => behaviorField(setting, idPrefix)).join ""
+    validation: "These apply to every room this account serves, not to one room."
+    submit: act "Save behaviour settings", "manage_platforms", may
+  }
+
+function connectionSection(connection: any, data: any, base: string, slug: string, may: any): string
+  adapters := data.known_adapters ?? []
+
+  factPairs := [
+    ["Account", connection.account]
+    ["Space id", connection.external_id]
+    ["Token env", connection.token_known ? connection.token_env : "no account configured for this adapter"]
+  ]
+  // The largest file this connection's own bot can download back off its
+  // platform to rehost, distinct from what it may upload; nil for a platform
+  // that draws no such distinction (see Adapters::Base.max_fetch_bytes_for).
+  factPairs.push ["Fetch ceiling", connection.fetch_ceiling, "bytes"] if connection.fetch_ceiling
+  facts := keyValues factPairs, "stacked"
+  tokenState := connection.token_known ?
+    statusPill(connection.token_status, connection.token_tone) :
+    statusPill("not configured", "warn")
+
+  editForm := form {
+    action: `${base}/communities/${slug}/platforms/${encodeURIComponent(connection.id)}`
+    fields: connectionFields adapters, connection, `connection-${connection.id}`
+    validation: "Changing the adapter or account repoints this connection at other credentials."
+    submit: act "Save connection", "manage_platforms", may
+  }
+
+  channels := table
+    columns: [
+      { key: "endpoint_key", header: "Endpoint key", format: "code" }
+      { key: "label", header: "Label" }
+      { key: "route_key", header: "Route key", format: "code" }
+      { key: "direction", header: "Direction" }
+      { key: "status", header: "Status", tone: "status_tone" }
+      // Whether this channel is actually posting under the sender's own name
+      // right now, or has silently fallen back to the bot account (#1700):
+      // "puppeting", "bot fallback (check Manage Webhooks)", "off (webhook:
+      // off)", "not yet observed" (no traffic since the last restart) or
+      // "n/a" for an adapter that does not puppet at all.
+      { key: "puppet_status", header: "Puppeting", tone: "puppet_status_tone" }
+    ]
+    rows: connection.channels ?? []
+    empty: "No channels on this connection."
+
+  section {
+    variant: "collapsible"
+    title: `${connection.adapter} / ${connection.account}`
+    body: facts + tokenState +
+      section({ title: "Edit connection", body: editForm }) +
+      section({ title: "Behaviour settings", body: connectionBehaviour(connection, base, slug, may) }) +
+      section({ title: "Channels", body: channels })
+  }
+
+function connectionsSection(data: any, base: string, slug: string, may: any): string
+  connections := data.connections ?? []
+
+  explainer := notice(
+    "The platform connections this community is wired to: which adapter and credentialed account " +
+      "serve it, whether its key is present, and the per-account behaviour settings that adapter " +
+      "exposes."
+    "info"
+  )
+  addNote := notice(
+    "Onboards a platform this community does not have yet, for example an account that came online " +
+      "dormant with no endpoints declared. Its channels do not show up anywhere until the adapter's " +
+      "next connect runs its channel sync; map them from Rooms once they do."
+    "info"
+  )
+  addForm := form {
+    action: `${base}/communities/${slug}/platforms/connections`
+    fields: connectionFields data.known_adapters ?? [], null, "connection-new"
+    validation: "Adapter and account name the credentials this connection runs on, so both are required."
+    submit: act "Add connection", "manage_platforms", may
+  }
+  toRooms := act "Open rooms", "view_platforms", may, variant: "secondary",
+    to: `${base}/communities/${slug}/rooms?state=unroomed`
+
+  listed := connections.length is 0 ?
+    section({ title: "Connected platforms", body: notice("No platform connections for this community.", "empty") }) :
+    connections.map((connection: any) => connectionSection(connection, data, base, slug, may)).join ""
+
+  section({ variant: "plain", body: explainer }) +
+    section({ title: "Add a platform connection", body: addNote + toRooms + addForm }) +
+    listed
+
+function fluxerFields(kinds: any[], instance: any): string
+  field({
+    name: "label", label: "Label", size: "short", value: instance?.label
+  }) + field({
+    name: "kind", label: "Kind", type: "select", size: "short", value: instance?.kind, options: kinds
+  }) + field({
+    name: "endpoint_url", label: "Endpoint URL", size: "full", value: instance?.endpoint_url
+    hint: "Required for a self-hosted instance and cleared for flagship, which uses the adapter's default."
+  }) + field({
+    name: "api_key_env", label: "API key env var", size: "short", value: instance?.api_key_env
+    hint: "Names the environment variable holding the key. The key itself is never typed here."
+  })
+
+function fluxerInstanceSection(instance: any, kinds: any[], base: string, slug: string, may: any): string
+  editForm := form {
+    action: `${base}/communities/${slug}/platforms/fluxer/${encodeURIComponent(instance.id)}`
+    fields: fluxerFields kinds, instance
+    validation: "Switching an instance to flagship clears the endpoint URL it was reaching."
+    submit: act "Save instance", "manage_platforms", may
+  }
+  removeForm := post `${base}/communities/${slug}/platforms/fluxer/${encodeURIComponent(instance.id)}/delete`,
+    act("Remove", "manage_platforms", may, variant: "destructive", size: "small")
+
+  facts .= [["Kind", instance.kind_label], ["API key env", instance.api_key_env]]
+  facts.push ["Endpoint", instance.endpoint_url] if instance.self_hosted
+
+  section {
+    variant: "collapsible"
+    title: instance.label
+    body: keyValues(facts, "stacked") + statusPill(instance.key_status, instance.key_tone) +
+      section({ title: "Edit", body: editForm }) +
+      actionsRow removeForm
+  }
+
+function fluxerSection(data: any, base: string, slug: string, may: any): string
+  kinds := data.fluxer_kinds ?? []
+  instances := data.fluxer_instances ?? []
+
+  explainer := notice(
+    "Fluxer is self-hostable, so this community's Fluxer presence is not one shared token the way " +
+      "Telegram and Discord are: it can take part in the flagship instance and any number of " +
+      "self-hosted ones at once, each its own row here."
+    "info"
+  ) + notice(
+    "A row records an operator's intent. Live-wiring it to a running bridge still goes through a " +
+      "matching accounts entry in bridge.config.yaml."
+    "warning"
+  )
+
+  addForm := form {
+    action: `${base}/communities/${slug}/platforms/fluxer`
+    fields: fluxerFields kinds, null
+    validation: "Endpoint URL is required for a self-hosted instance and ignored for flagship."
+    submit: act "Add instance", "manage_platforms", may
+  }
+
+  listed := instances.length is 0 ?
+    notice("No Fluxer instances configured for this community.", "empty") :
+    instances.map((instance: any) => fluxerInstanceSection(instance, kinds, base, slug, may)).join ""
+
+  section({ variant: "plain", body: explainer }) +
+    section({ title: "Add a Fluxer instance", body: addForm }) +
+    section({ title: "Fluxer instances", body: listed })
+
+function renderPlatforms(data: any, base: string): string
+  community := data.community
+  may := data.may ?? {}
+  slug := encodeURIComponent community.slug
+
+  tablePage {
+    title: "Connections"
+    lede: "Where this community reaches out to, and the credentials behind each of those reaches."
+    sections: platformLinksSection(data, base, slug, may) +
+      connectionsSection(data, base, slug, may) +
+      fluxerSection(data, base, slug, may)
+  }
+
+// Operators: who runs this community, who only reads it, and the tokens that
+// hand either role to somebody nobody has met yet. The grant matrix above them
+// is deployment-wide, so it only arrives for a reader whose sight is.
+
+// One grant, drawn as its own single-entry checklist. The route behind this
+// form decides on the key being present at all, which is what an unticked
+// checkbox submitting nothing gives it and what a select never would.
+function permissionField(row: any): string
+  field
+    name: `permissions[${row.action}]`
+    label: row.label
+    type: "checklist"
+    value: row.allowed ?? []
+    options: [["1", "Allowed"]]
+
+function permissionsSection(data: any, base: string, may: any): string
+  return "" unless data.deployment_wide
+
+  groups := (data.permission_groups ?? []).map (group: any) =>
+    section { title: group.group, body: (group.rows ?? []).map(permissionField).join "" }
+
+  about := notice(
+    "An operator reads everything in a community they run and changes nothing until something here " +
+      "is ticked. Each grant applies in every community, and only ever within the ones that " +
+      "operator was given."
+    "info"
+  ) + notice(
+    "Turning a feature on and editing what it does are separate on purpose. Somebody who can switch " +
+      "the word filter off for a noisy room is doing a small thing; somebody who can rewrite which " +
+      "words it catches can leave it reading as on while it catches nothing."
+    "warning"
+  )
+
+  section {
+    title: "What operators may change"
+    body: about + form({
+      action: `${base}/operator-permissions`
+      hidden: { back: data.back }
+      body: groups.join ""
+      submit: act "Save permissions", "manage_action_permissions", may
+    })
+  }
+
+function operatorRequestsSection(data: any, base: string, slug: string, may: any): string
+  pending := data.pending ?? []
+
+  return section {
+    title: "Pending requests"
+    body: notice(
+      "This community has no operator yet, so requests cannot be decided from here. An operator " +
+        "must be seeded or claimed first."
+      "empty"
+    )
+  } if pending.length > 0 and not data.has_approver
+
+  decide := (row: any) =>
+    approve := post `${base}/communities/${slug}/operators/${encodeURIComponent(row.id)}/approve`,
+      act("Approve", "manage_operator_requests", may, size: "small")
+    deny := post `${base}/communities/${slug}/operators/${encodeURIComponent(row.id)}/deny`,
+      act("Deny", "manage_operator_requests", may, variant: "secondary", size: "small")
+    actionsRow approve + deny
+
+  requests := table
+    columns: [
+      { key: "requester", header: "Requester" }
+      { key: "native_id", header: "Native id", format: "code" }
+      { key: "adapter", header: "Platform", format: "enum" }
+      { key: "requested_at", header: "Requested", format: "timestamp" }
+    ]
+    rows: pending
+    empty: "No pending operator requests."
+    actions: decide
+
+  section { title: "Pending requests", body: requests }
+
+function communityViewersSection(data: any, base: string, slug: string, may: any): string
+  about := notice(
+    `A viewer of ${data.community.slug} reads it and changes nothing in it. An operator here can hand ` +
+      "that out, because it reads no further than an operator here already reads."
+    "info"
+  )
+  helpDisclosure := helpSection {
+    title: "About the two viewer roles"
+    action: "view_operators"
+    may: may
+    paragraphs: [
+      "Reading every community is a separate, deployment-wide role on the Viewers page, and only an " +
+        "administrator hands that one out."
+      "Handles named in the configuration this deployment ships with read every community already, " +
+        "which is the floor under both, and nothing here can take that away."
+      "Name a viewer by the platform handle they own, never by a display name anyone can change. On " +
+        "Matrix that is the full ID; everywhere else the bare username."
+    ]
+  }
+
+  decideRequest := (row: any) =>
+    approve := post `${base}/communities/${slug}/viewer-requests/${encodeURIComponent(row.id)}/approve`,
+      act("Approve", "manage_community_viewers", may, size: "small")
+    deny := post `${base}/communities/${slug}/viewer-requests/${encodeURIComponent(row.id)}/deny`,
+      act("Deny", "manage_community_viewers", may, variant: "secondary", size: "small")
+    actionsRow approve + deny
+
+  requests := (data.viewer_requests ?? []).length is 0 ? "" : section {
+    title: "Pending viewer requests"
+    body: table({
+      columns: [
+        { key: "requester", header: "Requester" }
+        { key: "native_id", header: "Native id", format: "code" }
+        { key: "adapter", header: "Platform", format: "enum" }
+        { key: "requested_at", header: "Requested", format: "timestamp" }
+      ]
+      rows: data.viewer_requests
+      empty: "No pending viewer requests."
+      actions: decideRequest
+    })
+  }
+
+  revokeViewer := (row: any) =>
+    return "" unless row.removable
+
+    post `${base}/communities/${slug}/viewers/${encodeURIComponent(row.id)}/revoke`,
+      act("Revoke", "manage_community_viewers", may, variant: "destructive", size: "small")
+
+  viewerTable := table
+    columns: [
+      { key: "handle", header: "Handle", format: "code" }
+      { key: "adapter", header: "Platform" }
+      { key: "granted_at", header: "Granted", format: "timestamp" }
+      { key: "granted_by", header: "By" }
+      { key: "note", header: "Note" }
+    ]
+    rows: data.viewers ?? []
+    empty: `Nobody reads ${data.community.slug} without operating it.`
+    actions: revokeViewer
+
+  grantForm := form {
+    action: `${base}/communities/${slug}/viewers`
+    fields: field({
+      name: "adapter", label: "Platform", type: "select", size: "short"
+      options: data.viewer_adapters ?? []
+    }) + field({
+      name: "handle", label: "Handle", size: "short", required: true
+      hint: "The platform handle they own, for example someone or @someone:example.org."
+    }) + field({
+      name: "label", label: "Name", size: "short", hint: "Optional, for your own reference."
+    })
+    submit: act "Grant", "manage_community_viewers", may
+  }
+
+  section({ title: "Viewers of this community", body: about + helpDisclosure }) +
+    requests +
+    section({ title: "Who reads this community", body: viewerTable }) +
+    section({ title: "Let somebody read this community", body: grantForm })
+
+function authTokensSection(data: any, base: string, slug: string, may: any): string
+  about := notice(
+    "For somebody whose handle you do not have yet. Mint a token, give it to them however you like, " +
+      "and they send the bot /auth and the token in a private message. That grants them what the " +
+      "token says and sends them their first sign-in link in the same reply."
+    "info"
+  ) + notice(
+    "The decision is made here, when the token is minted, so redeeming it asks nobody anything. It " +
+      "works once, it expires whether or not anybody uses it, and it can be taken back until it is " +
+      "used. Nobody can mint a token bigger than the role they hold themselves."
+    "warning"
+  )
+
+  issued := data.issued_auth_token ? section({
+    title: "The token, shown once"
+    body: notice(
+      "Anybody who has this takes the role it carries, so send it over something private and do not " +
+        "keep a copy. If it goes astray, revoke it below and mint another."
+      "warning"
+    ) + code(data.issued_auth_token, "block")
+  }) : ""
+
+  revokeToken := (row: any) =>
+    return "" unless row.live
+
+    post `${base}/communities/${slug}/auth-tokens/${encodeURIComponent(row.public_id)}/revoke`,
+      act("Revoke", "manage_community_viewers", may, variant: "destructive", size: "small")
+
+  tokenTable := table
+    columns: [
+      { key: "label", header: "For" }
+      { key: "grants", header: "Grants" }
+      { key: "state", header: "State", tone: "state_tone" }
+      { key: "expires_at", header: "Expires", format: "timestamp" }
+      { key: "created_by", header: "Minted by" }
+    ]
+    rows: data.auth_tokens ?? []
+    empty: `No tokens have been minted for ${data.community.slug}.`
+    actions: revokeToken
+
+  // Each role is its own select rather than a checkbox: the route reads both
+  // as the literal "1", which a select always sends and an unticked box never
+  // would.
+  mintForm := form {
+    action: `${base}/communities/${slug}/auth-tokens`
+    fields: field({
+      name: "operator", label: "Operator", type: "select", size: "short", value: "0"
+      options: [["1", "Yes"], ["0", "No"]]
+      hint: `Changes things in ${data.community.slug}.`
+    }) + field({
+      name: "viewer", label: "Viewer", type: "select", size: "short", value: "0"
+      options: [["1", "Yes"], ["0", "No"]]
+      hint: `Reads ${data.community.slug} and changes nothing.`
+    }) + field({
+      name: "ttl_hours", label: "Good for (hours)", type: "number", size: "short", value: 24
+    }) + field({
+      name: "label", label: "Who it is for", size: "short", hint: "Optional, for your own reference."
+    })
+    submit: act "Mint", "manage_community_viewers", may
+  }
+
+  section({ title: "Hand a role over with a token", body: about }) +
+    issued +
+    section({ title: "Tokens for this community", body: tokenTable }) +
+    section({ title: "Mint a token", body: mintForm })
+
+function operatorsListSection(data: any, base: string, slug: string, may: any): string
+  about := notice(
+    "A row with no controls is the always-operators fail-safe: a code-owned handle that is always an " +
+      "owner-level operator here and in every other community, so operator access can never be lost " +
+      "through the database or this panel. It cannot be removed from here, or at all."
+    "info"
+  )
+
+  removeOperator := (row: any) =>
+    return "" unless row.removable
+
+    post `${base}/communities/${slug}/operators/${encodeURIComponent(row.id)}/delete`,
+      act("Delete", "manage_operators", may, variant: "destructive", size: "small")
+
+  operatorTable := table
+    columns: [
+      { key: "person", header: "Person" }
+      { key: "actions", header: "Actions", format: "code" }
+      { key: "scope", header: "Scope", format: "code" }
+      { key: "granted_at", header: "Granted", format: "timestamp" }
+      { key: "granted_by", header: "By" }
+    ]
+    rows: data.operators ?? []
+    empty: "No operators for this community."
+    actions: removeOperator
+
+  section { title: "Operators", body: about + operatorTable }
+
+// The audience an alert really has, which the operator list alone
+// overstates: a bot cannot open a private chat first, so an operator who has
+// only ever spoken to it in a group hears nothing. Drawn only when there is
+// somebody in it.
+function unreachableOperatorsSection(data: any): string
+  rows := data.unreachable ?? []
+  return "" unless rows.length > 0
+
+  about := notice(
+    "These operators hold everything an operator holds and hear none of it: the last direct message " +
+      "to each was refused. The person has to open a private chat with the bot and send /start, once, " +
+      "before anything reaches them."
+    "warning"
+  )
+
+  refused := table
+    columns: [
+      { key: "person", header: "Person" }
+      { key: "native_id", header: "Native id", format: "code" }
+      { key: "adapter", header: "Platform", format: "enum" }
+      { key: "refused_at", header: "Last refused", format: "timestamp" }
+      { key: "reason", header: "Why" }
+    ]
+    rows: rows
+    empty: "Every operator can be reached."
+
+  section { title: "Operators nothing can reach", body: about + refused }
+
+function renderOperators(data: any, base: string): string
+  community := data.community
+  may := data.may ?? {}
+  slug := encodeURIComponent community.slug
+
+  tablePage {
+    title: "Operators"
+    lede: "Who runs this community, who only reads it, and how either role is handed over."
+    sections: permissionsSection(data, base, may) +
+      operatorRequestsSection(data, base, slug, may) +
+      communityViewersSection(data, base, slug, may) +
+      authTokensSection(data, base, slug, may) +
+      unreachableOperatorsSection(data) +
+      operatorsListSection(data, base, slug, may)
+  }
+
+// Community analytics: one community's detailed report, ten sections of
+// figures over a chosen window. The server folds every figure into StatRow
+// triples and Chart rows before it gets here (see ViewData#analytics_reports),
+// so this walks a list rather than carrying a block per report.
+
+function analyticsWindowTabs(base: string, slug: string, data: any): string
+  view := encodeURIComponent data.channel_view ?? ""
+  links := (data.windows ?? []).map (key: string) =>
+    [`${base}/communities/${slug}/analytics?window=${encodeURIComponent(key)}&channel_view=${view}`, key, key]
+  tabLinks links, data.window ?? ""
+
+// Which grouping the By channel chart reads, keeping the chosen window on the
+// query string so switching the grouping never resets it.
+function analyticsChannelTabs(base: string, slug: string, data: any): string
+  window := encodeURIComponent data.window ?? ""
+  links := (data.channel_views ?? []).map ([value, text]: any[]) =>
+    [`${base}/communities/${slug}/analytics?window=${window}&channel_view=${encodeURIComponent(value)}`, text, value]
+  tabLinks links, data.channel_view ?? ""
+
+function analyticsChart(figure: any, tabs: string): string
+  drawn := chart figure.rows ?? [],
+    shape: figure.shape
+    title: figure.title
+    empty: figure.empty
+    limit: figure.limit ?? 10
+  tabs + drawn
+
+function analyticsReport(report: any, base: string, slug: string, data: any): string
+  return section {
+    title: report.title
+    body: notice(report.reason, "empty")
+  } unless report.available
+
+  stats := (report.stats ?? []).length > 0 ? statRow(report.stats ?? []) : ""
+  figures := (report.charts ?? []).map (figure: any) =>
+    analyticsChart figure, (figure.tabs is "channel_view" ? analyticsChannelTabs(base, slug, data) : "")
+  note := report.note ? notice(report.note, "info") : ""
+
+  section { title: report.title, body: stats + figures.join("") + note }
+
+function analyticsRecencySection(data: any): string
+  senders := table
+    columns: [
+      { key: "adapter", header: "Platform", format: "enum" }
+      { key: "username", header: "Handle", format: "code" }
+      { key: "display_name", header: "Display name" }
+      { key: "last_seen_at", header: "Last seen", format: "timestamp" }
+    ]
+    rows: data.recently_active ?? []
+    empty: "No senders seen in this window."
+
+  section {
+    title: "Most recently active"
+    body: senders + notice(
+      "The identity directory records who was seen and when, per platform, never a per-person " +
+        "message count, so this is recency rather than a posting leaderboard."
+      "info"
+    )
+  }
+
+function renderAnalytics(data: any, base: string): string
+  community := data.community
+  slug := encodeURIComponent community.slug
+  reports := data.reports ?? []
+
+  explainer := notice(
+    `Read-only aggregates over the last ${data.window}. Nothing here changes the bot.`
+    "info"
+  )
+  intro := section { variant: "plain", body: analyticsWindowTabs(base, slug, data) + explainer }
+  drawn := reports.map (report: any) =>
+    body := analyticsReport report, base, slug, data
+    report.id is "members" ? body + analyticsRecencySection(data) : body
+
+  tablePage {
+    title: "Analytics"
+    lede: `What this community did over the last ${data.window}, and what it is still waiting on.`
+    sections: intro + drawn.join ""
+  }
+
+// Polls: every open poll and open scheduling session, which are the same row
+// told apart by its kind. Listing and cancelling only, since creating one is a
+// chat action.
+
+function renderPolls(data: any, base: string): string
+  community := data.community
+  may := data.may ?? {}
+  polls := data.polls ?? []
+  slug := encodeURIComponent community.slug
+
+  explainer := notice(
+    "Every open poll and open scheduling session across this community's rooms, soonest deadline " +
+      "first. Creating one is a chat action; this page lists and cancels."
+    "info"
+  )
+  cancelWarning := notice(
+    "Cancelling closes the poll immediately and withdraws its pending close and repost jobs, the " +
+      "same as replying cancel on the card itself."
+    "warning"
+  )
+
+  cancelPoll := (row: any) =>
+    post `${base}/communities/${slug}/polls/${encodeURIComponent(row.id)}/cancel`,
+      act("Cancel", "configure_poll", may, variant: "destructive", size: "small")
+
+  pollTable := table
+    columns: [
+      { key: "kind", header: "Kind" }
+      { key: "question", header: "Question" }
+      { key: "room", header: "Room", format: "code" }
+      { key: "closes_at", header: "Closes", format: "timestamp" }
+      { key: "options", header: "Options", align: "end" }
+      { key: "votes", header: "Votes", align: "end" }
+    ]
+    rows: polls
+    empty: "No open polls."
+    actions: cancelPoll
+
+  tablePage {
+    title: "Polls"
+    lede: "Open polls and scheduling sessions, soonest deadline first."
+    sections: section({ variant: "plain", body: explainer + cancelWarning }) +
+      section({ title: "Open polls", body: pollTable })
+  }
+
+// Guest portal: which rooms a guest may be invited into, the link issue form
+// for those that do, and every invite issued so far.
+
+// The freshly minted link, drawn once and never again: the create route hands
+// it over on the render straight after issuing, and nothing stores it whole.
+function guestIssuedSection(data: any): string
+  return "" unless data.issued_link
+
+  section {
+    title: `Guest link for ${data.issued_nickname ?? "this guest"}`
+    body: notice(
+      "Copy this now. For the guest's safety it is shown once and never stored in full."
+      "warning"
+    ) + code(data.issued_link, "block")
+  }
+
+function guestAccessSection(data: any, base: string, slug: string, may: any): string
+  access := data.room_access ?? []
+
+  accessForm := (row: any) =>
+    form {
+      action: `${base}/communities/${slug}/guests/access`
+      hidden: { room: row.room_key }
+      fields: field({
+        name: "allowed", label: "Guests", type: "select", size: "short"
+        value: row.allowed ? "on" : "off", options: [["on", "Allow"], ["off", "Disallow"]]
+      }) + field({
+        name: "who_can_invite", label: "Who can invite", type: "select", size: "short"
+        value: row.who_can_invite, options: data.who_can_invite_options ?? []
+      })
+      submit: act "Save", "manage_guests", may, variant: "secondary", size: "small"
+    }
+
+  accessTable := table
+    columns: [
+      { key: "label", header: "Room", format: "code" }
+      { key: "status", header: "Guests allowed", tone: "status_tone" }
+      { key: "who_can_invite", header: "Who can invite", format: "enum" }
+    ]
+    rows: access
+    empty: "This community has no rooms, so there is nothing to allow guests in yet. A guest session " +
+      "is scoped to a room; map a channel into one and it appears here."
+    actions: accessForm
+
+  section { title: "Room access", body: accessTable }
+
+function guestIssueSection(data: any, base: string, slug: string, may: any): string
+  access := data.room_access ?? []
+  allowed := data.allowed_rooms ?? []
+
+  return section {
+    title: "Issue a guest link"
+    body: notice("This community has no rooms yet, so no guest link can be framed for one.", "empty")
+  } if access.length is 0
+
+  return section {
+    title: "Issue a guest link"
+    body: notice("No room allows guests yet. Turn on guest access for a room above first.", "empty")
+  } if allowed.length is 0
+
+  issueForm := form {
+    action: `${base}/communities/${slug}/guests`
+    fields: field({
+      name: "room", label: "Room", type: "select", size: "short", options: allowed
+    }) + field({
+      name: "nickname", label: "Guest nickname", size: "short"
+      hint: "How the guest is shown in the room, for example: Visiting Reviewer."
+    }) + field({
+      name: "ttl_hours", label: "Lifetime (hours)", type: "number", size: "short", value: 24
+    })
+    submit: act "Issue link", "manage_guests", may
+  }
+
+  section { title: "Issue a guest link", body: issueForm }
+
+function renderGuests(data: any, base: string): string
+  community := data.community
+  may := data.may ?? {}
+  slug := encodeURIComponent community.slug
+
+  explainer := notice(
+    "A guest invite is a time-bounded, room-scoped link. The guest reads the whole bridged room and " +
+      "sends plain text back into it, with no history before they join, no commands and no panel. " +
+      "When the link expires or you revoke it, the session ends."
+    "info"
+  )
+  helpDisclosure := helpSection {
+    title: "About guest access"
+    action: "view_guests"
+    may: may
+    paragraphs: [
+      "Guests are allowed only in rooms turned on below, and every channel bridged into a room " +
+        "inherits that room's setting."
+      "Who can invite is operators (the default) or everyone. An operator can always invite where " +
+        "guests are allowed, and everyone additionally lets an ordinary member invite."
+    ]
+  }
+
+  revokeInvite := (row: any) =>
+    return "" unless row.live
+
+    post `${base}/communities/${slug}/guests/${encodeURIComponent(row.id)}/revoke`,
+      act("Revoke", "manage_guests", may, variant: "destructive", size: "small")
+
+  inviteTable := table
+    columns: [
+      { key: "guest", header: "Guest", format: "code" }
+      { key: "room", header: "Room", format: "code" }
+      { key: "state", header: "State", tone: "state_tone" }
+      { key: "expires_at", header: "Expires", format: "timestamp" }
+      { key: "created_by", header: "Issued by" }
+    ]
+    rows: data.invites ?? []
+    empty: "No guest invites yet."
+    actions: revokeInvite
+
+  tablePage {
+    title: "Guest portal"
+    lede: "Time-bounded, room-scoped links into one bridged room."
+    sections: section({ variant: "plain", body: explainer + helpDisclosure }) +
+      guestIssuedSection(data) +
+      guestAccessSection(data, base, slug, may) +
+      guestIssueSection(data, base, slug, may) +
+      section({ title: "Invites", body: inviteTable })
+  }
+
+// Word filter and FAQ: one feature each, edited at every scope rather than at
+// one scope at a time, which is why neither goes through the generic feature
+// config form. Both draw the same shape: what the bot applies everywhere as
+// one table, then a disclosure per scope holding that scope's own editor.
+
+// The third state a room's enablement offers, absent on the community-wide
+// default because there is nothing above it to follow.
+function enablementField(scope: any): string
+  options .= [["on", "On"], ["off", "Off"]]
+  options.push ["inherit", "Follows all"] unless scope.community
+  field
+    name: "enabled"
+    label: "Enabled"
+    type: "select"
+    size: "short"
+    value: scope.enabled ? "on" : "off"
+    options: options
+
+// A scope's own heading, saying up front when a room is only borrowing the
+// community-wide default rather than holding a row of its own.
+function scopeHeading(scope: any): string
+  scope.follows_default ? `${scope.label} (follows all)` : scope.label
+
+function wordFilterScopeSection(scope: any, data: any, base: string, slug: string, may: any): string
+  action := `${base}/communities/${slug}/word-filter`
+
+  behaviour := form {
+    action: action
+    hidden: { op: "scope", selector: scope.key }
+    fields: field({
+      name: "mode", label: "Mode", type: "select", value: scope.mode, options: data.modes ?? []
+      hint: "Off filters nothing from the shipped list, and custom words below still apply under it."
+    }) + field({
+      name: "action", label: "On a hit", type: "select", size: "short", value: scope.action
+      options: data.actions ?? []
+    }) + field({
+      name: `exempt[${scope.key}]`, label: "Exempt operators", type: "select", size: "short"
+      value: scope.exempt_operators ? "on" : "off", options: [["on", "Yes"], ["off", "No"]]
+      hint: "Exempt by default, which is why testing the filter on your own messages shows nothing."
+    }) + enablementField(scope)
+    submit: act "Save", "configure_word_filter", may
+  }
+
+  // The mode and the action ride along unchanged so saving a word list on its
+  // own never quietly resets either: this route reads both on every save and
+  // falls back to off for a mode it was not sent.
+  words := form {
+    action: action
+    hidden: { op: "save", selector: scope.key, mode: scope.mode, action: scope.action }
+    fields: field({
+      name: "custom", label: "Extra words to filter", type: "multiline", size: "full"
+      value: scope.custom
+      hint: "Added to whichever mode is set above, never a replacement for it. One word or phrase per line."
+    })
+    submit: act "Save words", "configure_word_filter", may
+  }
+
+  section {
+    variant: "collapsible"
+    title: scopeHeading scope
+    body: statusPill(scope.status, scope.status_tone) + behaviour + words
+  }
+
+function renderWordFilter(data: any, base: string): string
+  community := data.community
+  may := data.may ?? {}
+  scopes := data.scopes ?? []
+  slug := encodeURIComponent community.slug
+
+  explainer := notice(
+    "The word filter matches a message before the bridge relays it and, on a hit, deletes or flags " +
+      "it. Pick a mode per scope rather than typing a word list: the shipped list already carries " +
+      "the terms."
+    "info"
+  )
+  helpDisclosure := helpSection {
+    title: "About scopes and exemptions"
+    action: "view_community"
+    may: may
+    paragraphs: [
+      "A scope of all is the community-wide default, and every room either sets its own mode or " +
+        "follows it. What a row shows is what the bot actually applies there, so a room nobody has " +
+        "touched still reads its real state."
+      "Operators are exempt by default, so your own messages are not filtered and testing the " +
+        "filter on yourself shows nothing happening."
+    ]
+  }
+
+  summary := table
+    columns: [
+      { key: "label", header: "Scope", format: "code" }
+      { key: "status", header: "Status", tone: "status_tone" }
+      { key: "mode", header: "Mode" }
+      { key: "action", header: "On a hit" }
+      { key: "exempt_operators", header: "Operators exempt", format: "boolean" }
+    ]
+    rows: scopes
+    empty: "No rooms yet, so the community-wide default is the only scope."
+
+  tablePage {
+    title: "Word filter"
+    lede: "What the filter catches, and what it does about it, one scope at a time."
+    sections: section({ variant: "plain", body: explainer + helpDisclosure }) +
+      section({ title: "Every scope", body: summary }) +
+      scopes.map((scope: any) => wordFilterScopeSection(scope, data, base, slug, may)).join ""
+  }
+
+function faqScopeSection(scope: any, base: string, slug: string, may: any): string
+  action := `${base}/communities/${slug}/faq`
+
+  enablement := form {
+    action: action
+    hidden: { op: "scope", selector: scope.key }
+    fields: enablementField scope
+    submit: act "Save", "configure_faq", may
+  }
+
+  removeEntry := (row: any) =>
+    form {
+      action: action
+      variant: "action"
+      hidden: { op: "remove", selector: scope.key, id: row.id }
+      submit: act "Remove", "configure_faq", may, variant: "destructive", size: "small"
+    }
+
+  entries := table
+    columns: [
+      { key: "trigger", header: "Trigger", format: "code" }
+      { key: "response", header: "Response" }
+    ]
+    rows: scope.entries ?? []
+    empty: "No entries at this scope."
+    actions: removeEntry
+
+  section {
+    variant: "collapsible"
+    title: scopeHeading scope
+    body: statusPill(scope.status, scope.status_tone) + enablement + entries
+  }
+
+function renderFaq(data: any, base: string): string
+  community := data.community
+  may := data.may ?? {}
+  scopes := data.scopes ?? []
+  slug := encodeURIComponent community.slug
+
+  explainer := notice(
+    "An FAQ entry maps a trigger to a canned response. A command trigger fires on /name or !name " +
+      "and is swallowed; a keyword trigger posts the answer alongside a matching message."
+    "info"
+  )
+  helpDisclosure := helpSection {
+    title: "About scopes and defaults"
+    action: "view_community"
+    may: may
+    paragraphs: [
+      "A scope of all is the community-wide set every room inherits, and a per-room set overrides " +
+        "it for every channel bridged into that room."
+      "A room picked below that has never been configured inherits all's current on or off state, " +
+        "so adding its first entry never quietly turns the FAQ off for that room."
+    ]
+  }
+
+  addEntry := form {
+    action: `${base}/communities/${slug}/faq`
+    hidden: { op: "add" }
+    fields: field({
+      name: "selector", label: "Scope", type: "select", size: "short"
+      options: (data.scope_options ?? []).map((entry: any) => [entry.value, entry.label])
+    }) + field({
+      name: "trigger_type", label: "Trigger type", type: "select", size: "short"
+      options: data.trigger_types ?? []
+    }) + field({
+      name: "trigger", label: "Trigger", size: "short", hint: "For example rules."
+    }) + field({
+      name: "response", label: "Response", type: "multiline", size: "full"
+      hint: "What the bot posts back, for example: Be kind and read the pinned message."
+    })
+    submit: act "Add entry", "configure_faq", may
+  }
+
+  summary := table
+    columns: [
+      { key: "label", header: "Scope", format: "code" }
+      { key: "status", header: "Status", tone: "status_tone" }
+      { key: "entry_count", header: "Entries", align: "end" }
+    ]
+    rows: scopes
+    empty: "No rooms yet, so the community-wide set is the only scope."
+
+  tablePage {
+    title: "FAQ"
+    lede: "Canned answers and custom commands, one scope at a time."
+    sections: section({ variant: "plain", body: explainer + helpDisclosure }) +
+      section({ title: "Every scope", body: summary }) +
+      scopes.map((scope: any) => faqScopeSection(scope, base, slug, may)).join "" +
+      section({ title: "Add an entry", body: addEntry })
+  }
+
+function renderDatastore(data: any, base: string): string
+  may := data.may ?? {}
+
+  exportWarning := notice(
+    "Includes every community's data, and every secret this deployment stores in its own database " +
+      "(API keys, tokens, connection settings). Treat the download like any other credential. " +
+      "Rehosted files and guest uploads are metadata only here; their bytes live in the object " +
+      "store and are not included."
+    "warning"
+  )
+  download := act "Download snapshot (.yaml.gz)", "export_datastore", may,
+    to: `${base}/settings/datastore/export`
+
+  importWarning := notice(
+    "Restores into THIS deployment's datastore. Only ever succeeds against one with no data yet, " +
+      "so this is for a freshly bootstrapped box, not merging into a running one."
+    "warning"
+  )
+  uploadField := field(
+    name: "file", label: "Snapshot file", type: "file", required: true
+    hint: "A .yaml.gz snapshot from Download snapshot above, or `rubotty datastore export`."
+  )
+  upload := form {
+    action: `${base}/settings/datastore/import`
+    fields: uploadField
+    enctype: "multipart/form-data"
+    submit: act "Restore snapshot", "import_datastore", may
+  }
+
+  page {
+    title: "Datastore"
+    lede: "A portable, engine-independent snapshot of the whole datastore, for moving to a new " +
+      "deployment or keeping an ad-hoc backup."
+    sections: section({ title: "Export", body: exportWarning + download }) +
+      section({ title: "Import", body: importWarning + upload })
+  }
+
+// Every section drawn today, by the name the router resolves a path to. A
+// route in ./index.civet's table with no entry here is left to the browser,
+// which is how a section the internal surface answers can land before the
+// screen that composes it does.
+SCREENS := {
+  communities: renderCommunities
+  analytics_overview: renderAnalyticsOverview
+  accounts: renderAccounts
+  api_keys: renderApiKeys
+  viewers: renderViewers
+  overview: renderOverview
+  rooms: renderRooms
+  room_channel: renderRoomChannel
+  room_detail: renderRoomDetail
+  automatic_mapping: renderAutomaticMapping
+  endpoints: renderEndpoints
+  endpoint_edit: renderEndpointEdit
+  scripts: renderScripts
+  script_edit: renderScriptEdit
+  redirections: renderRedirections
+  webhooks: renderWebhooks
+  audit: renderAudit
+  features: renderFeatures
+  feature_config: renderFeatureConfig
+  participation: renderParticipation
+  alerts: renderAlerts
+  files: renderFiles
+  people: renderPeople
+  moderation: renderModeration
+  events: renderEvents
+  word_filter: renderWordFilter
+  faq: renderFaq
+  polls: renderPolls
+  guests: renderGuests
+  analytics: renderAnalytics
+  operators: renderOperators
+  platforms: renderPlatforms
+  onboarding: renderOnboarding
+  operator_tokens: renderOperatorTokens
+  administrators: renderAdministrators
+  integrations: renderIntegrations
+  backfill_proposals: renderBackfillProposals
+  datastore: renderDatastore
+  documentation: renderDocumentation
+  licence: renderLicence
+}
+
+// The dashboard screen lifecycle keeps its mount and base between navigations.
+function screens(): any
+  drawn := SCREENS
+  sections := Object.keys(drawn).filter (name: string) => typeof drawn[name] is "function"
+  mount .= null
+  base .= ""
+
+  // Safe to call again with the same view (the lifecycle contract every theme
+  // owes), since it replaces the mount's whole contents rather than patching.
+  function draw(view: any): void
+    renderer := drawn[view.section]
+    unless renderer
+      // Insurance: the router already keeps off a section +sections+ leaves
+      // out. Guarded on the address actually changing, because navigating to
+      // the address already showing reloads the document into the same state
+      // and does it again, forever.
+      target := base + view.path
+      window.location.href = target unless window.location.pathname is target
+      return
+
+    return unless mount
+    mount.innerHTML = renderer(view.data, base)
+
+  function teardown(): void
+    mount.innerHTML = "" if mount
+
+  function init(options: any): void
+    mount = options.root
+    base = options.base ?? ""
+
+  { init, draw, teardown, sections }
+
+export { SCREENS, screens }

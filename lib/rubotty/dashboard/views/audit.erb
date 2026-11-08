@@ -1,0 +1,23 @@
+<h1><%= @community ? "#{h(@community.name)}: audit log" : "Audit log" %></h1>
+
+<div class="card">
+  <form method="get" action="<%= request.script_name %><%= @community ? "/communities/#{h(@community.slug)}/audit" : "/audit" %>">
+    <div class="row">
+      <div>
+        <label>Source</label>
+        <input type="text" name="source" value="<%= h(@source) %>" placeholder="moderation">
+      </div>
+      <div>
+        <label>Action</label>
+        <input type="text" name="action" value="<%= h(@action) %>" placeholder="delete">
+      </div>
+      <div><button type="submit">Filter</button></div>
+    </div>
+  </form>
+</div>
+
+<%= audit_log_events_table(
+      @events,
+      empty: "No audit events#{@community ? " for this community" : ""} with these filters.",
+      include_community: @community.nil?
+    ) %>

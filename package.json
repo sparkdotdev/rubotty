@@ -1,0 +1,33 @@
+{
+  "name": "rubotty-dashboard-assets",
+  "private": true,
+  "description": "Build step for the dashboard's script editor, standard charts and Series A presentation.",
+  "scripts": {
+    "prebuild": "node $(test -f scripts/clean-dashboard-assets.js && echo scripts/clean-dashboard-assets.js || echo clean-dashboard-assets.js)",
+    "build": "npm run build:editor && npm run build:swatches && npm run build:civet && npm run build:theme-series-a-civet && npm run build:theme-runtime && npm run build:theme-head && npm run build:theme-boot && npm run build:chart-engine && npm run build:theme-series-a-style",
+    "build:editor": "node $(test -f scripts/build-dashboard-bundle.js && echo scripts/build-dashboard-bundle.js || echo build-dashboard-bundle.js) assets/editor/index.js lib/rubotty/dashboard/public/script-editor.js",
+    "build:chart-engine": "node $(test -f scripts/build-dashboard-bundle.js && echo scripts/build-dashboard-bundle.js || echo build-dashboard-bundle.js) tmp/themes/runtime/chart-boot.js lib/rubotty/dashboard/public/chart-engine.js",
+    "build:swatches": "sass --no-source-map --style=compressed --load-path=assets/themes assets/themes/swatches:lib/rubotty/dashboard/public",
+    "build:civet": "civet --js -c assets/themes/runtime/*.civet -o tmp/themes/runtime/.js",
+    "build:theme-runtime": "node $(test -f scripts/build-dashboard-bundle.js && echo scripts/build-dashboard-bundle.js || echo build-dashboard-bundle.js) tmp/themes/runtime/index.js lib/rubotty/dashboard/public/theme-runtime.js rubottyTheme",
+    "build:theme-head": "node $(test -f scripts/build-dashboard-bundle.js && echo scripts/build-dashboard-bundle.js || echo build-dashboard-bundle.js) tmp/themes/runtime/head.js lib/rubotty/dashboard/public/theme-head.js",
+    "build:theme-boot": "node $(test -f scripts/build-dashboard-bundle.js && echo scripts/build-dashboard-bundle.js || echo build-dashboard-bundle.js) tmp/themes/runtime/boot.js lib/rubotty/dashboard/public/theme-boot.js",
+    "build:theme-series-a-style": "sass --no-source-map --style=compressed assets/themes/series-a/style.scss lib/rubotty/dashboard/public/theme-series-a.css && node $(test -f scripts/strip-bom.js && echo scripts/strip-bom.js || echo strip-bom.js) lib/rubotty/dashboard/public/theme-series-a.css",
+    "build:theme-series-a-civet": "civet --js -c assets/themes/series-a/*.civet -o tmp/themes/series-a/.js",
+    "test:asset-notices": "node --test scripts/dashboard-notices.test.js"
+  },
+  "devDependencies": {
+    "@codemirror/autocomplete": "^6.18.0",
+    "@codemirror/language": "^6.11.0",
+    "@codemirror/legacy-modes": "^6.5.0",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.38.1",
+    "@danielx/civet": "~0.11.15",
+    "@lezer/highlight": "^1.2.1",
+    "codemirror": "^6.0.2",
+    "esbuild": "^0.25.0",
+    "js-yaml": "^4.3.1",
+    "sass": "^1.102.0"
+  },
+  "license": "SEE LICENSE IN LICENSE.MD"
+}

@@ -1,0 +1,143 @@
+// The condition rule builder. A script may carry several conditions, tried in
+// order, and the editor said so with one select and a run of checkboxes: the
+// order was invisible, the primary and the extras looked like different kinds
+// of thing, and nothing on the page said what the set added up to.
+//
+// This draws them as what they are: an ordered list, one row per rule, with an
+// Add condition action and a summary of the whole set. Nothing about the
+// request changes. The real controls stay on the page, hidden, and every edit
+// here is written straight back into them, so the POST is still trigger_type
+// plus trigger_also[] and the server never learns this exists.
+
+import { button, field, notice, actionsRow } from "./primitives.civet"
+import { chosenTriggers, triggerSummary, applyScriptTriggers } from "./script-triggers.civet"
+
+// Where the built controls live. A data attribute rather than a class, since
+// this is a mount point rather than anything a theme styles: what a reader
+// sees are the ordinary Field and Button classes inside it.
+MOUNT := "data-script-rules"
+
+// How many a script may carry. The server sends its own number; this is the
+// floor when a page somehow arrives without one.
+DEFAULT_MAX := 4
+
+function primarySelect(root: any): any
+  root?.querySelector? "#rb-field-trigger_type"
+
+function extraBoxes(root: any): any[]
+  Array.from(root?.querySelectorAll?('input[name="trigger_also[]"]') ?? [])
+
+// The rules the real controls are holding right now, in the order they will be
+// tried: the primary first, then whatever extras are ticked.
+function currentRules(root: any): string[]
+  picker := primarySelect root
+  return [] unless picker
+
+  rules .= [picker.value]
+  for box of extraBoxes root
+    rules.push box.value if box.checked and not rules.includes(box.value)
+  rules
+
+// Every edit ends here: rule one is the primary and the rest are the extras,
+// which is exactly the shape the form already posted.
+function writeBack(root: any, rules: string[]): void
+  picker := primarySelect root
+  return unless picker and rules.length > 0
+
+  picker.value = rules[0]
+  rest := rules.slice 1
+  for box of extraBoxes root
+    box.checked = rest.includes box.value
+
+function mountIn(root: any): any
+  found := root.querySelector? `[${MOUNT}]`
+  return found if found
+
+  picker := primarySelect root
+  wrapper := picker?.closest? ".rb-field"
+  return null unless wrapper?.parentNode
+
+  made := root.ownerDocument?.createElement?("div") ?? document.createElement "div"
+  made.setAttribute MOUNT, "true"
+  wrapper.parentNode.insertBefore made, wrapper
+  made
+
+function ruleRow(index: number, name: string, catalogue: any[], may: any): string
+  options := catalogue.map((entry: any) => [entry.name, entry.name])
+  control := field
+    name: `rule-${index}`
+    label: index is 0 ? "Runs when" : "Or when"
+    type: "select"
+    value: name
+    options: options
+    size: "medium"
+  return control if index is 0
+
+  control + button("Remove", "manage_scripts", may, variant: "secondary", size: "small",
+                   name: "rule-remove", value: String(index))
+
+// The whole set in one sentence, plus a row per rule and the action that adds
+// one. Drawn out of the same emitters every other control on the page is, so a
+// rule row weighs what a Field weighs and nothing here invents a class.
+function rulesMarkup(rules: string[], catalogue: any[], may: any, max: number): string
+  picked := rules.map((name: string) => catalogue.find((entry: any) => entry.name is name)).filter Boolean
+  summary := triggerSummary picked
+  rows := rules.map((name: string, index: number) => ruleRow(index, name, catalogue, may)).join ""
+  add := rules.length < max ?
+    button("Add condition", "manage_scripts", may, variant: "secondary", size: "small", name: "rule-add") :
+    notice(`A script may carry ${max} conditions, which is as many as this one has.`, "info")
+
+  notice(summary or "Pick what wakes this script.", "info") + rows + actionsRow(add)
+
+// Draw the builder for whatever the real controls are holding, hide the
+// controls themselves, and let the field narrowing run over the result.
+function drawScriptRules(root: any, data: any): void
+  return unless root and data?.section is "script_edit"
+  catalogue := data.triggers ?? []
+  return unless catalogue.length > 0
+
+  mount := mountIn root
+  return unless mount
+
+  rules := currentRules root
+  max := data.max_conditions ?? DEFAULT_MAX
+  mount.innerHTML = rulesMarkup rules, catalogue, data.may ?? {}, max
+
+  for wrapper of [primarySelect(root)?.closest?(".rb-field"), extraBoxes(root)[0]?.closest?(".rb-field")]
+    wrapper.hidden = true if wrapper
+
+  applyScriptTriggers root, data
+
+// One edit to the list: a rule changed, one was removed, or one was added.
+// Everything goes through the real controls, so the next draw reads back what
+// this wrote rather than any state of its own.
+function editScriptRules(root: any, data: any, target: any): boolean
+  return false unless root and data?.section is "script_edit"
+  mount := root.querySelector? `[${MOUNT}]`
+  return false unless mount and mount.contains? target
+
+  rules .= currentRules root
+  max := data.max_conditions ?? DEFAULT_MAX
+  catalogue := data.triggers ?? []
+
+  if target.name is "rule-add"
+    spare := catalogue.map((entry: any) => entry.name).find((name: string) => not rules.includes(name))
+    return false unless spare and rules.length < max
+    rules.push spare
+  else if target.name is "rule-remove"
+    at := Number target.value
+    return false unless at > 0 and at < rules.length
+    rules.splice at, 1
+  else if target.id?.startsWith? "rb-field-rule-"
+    at := Number target.id.replace("rb-field-rule-", "")
+    return false unless at >= 0 and at < rules.length
+    rules[at] = target.value
+    rules = rules.filter((name: string, index: number) => rules.indexOf(name) is index)
+  else
+    return false
+
+  writeBack root, rules
+  drawScriptRules root, data
+  true
+
+export { MOUNT, currentRules, writeBack, rulesMarkup, drawScriptRules, editScriptRules }

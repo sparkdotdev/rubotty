@@ -1,0 +1,39 @@
+<h1>Analytics</h1>
+<%= window_tabs("/analytics", @windows, @window) %>
+<p class="muted">Read-only activity and moderation aggregates per community over the last <strong><%= h(@window) %></strong>. Open a community for its full breakdown.</p>
+
+<% if @rows.empty? %>
+  <div class="card muted">No communities yet.</div>
+<% else %>
+  <table>
+    <thead>
+      <tr>
+        <th>Community</th>
+        <th>Active senders</th>
+        <th>Moderation actions</th>
+        <th>Relayed (24h)</th>
+        <th>Active guests</th>
+        <th>Operators</th>
+        <th>Upcoming events</th>
+        <th>Pending spaces</th>
+        <th>Request avg</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @rows.each do |row| %>
+        <tr>
+          <td><a href="<%= request.script_name %>/communities/<%= h(row[:community].slug) %>/analytics?window=<%= h(@window) %>"><%= h(row[:community].name) %></a> <span class="muted"><code><%= h(row[:community].slug) %></code></span></td>
+          <td><%= row[:active_members] %></td>
+          <td><%= row[:moderation_actions] %></td>
+          <td><%= row[:messages_recent] %></td>
+          <td><%= row[:active_guests] %></td>
+          <td><%= row[:operators] %></td>
+          <td><%= row[:upcoming_events] %></td>
+          <td><%= row[:pending_spaces] %></td>
+          <td><%= row[:operator_request_minutes] %>m</td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+  <p class="note">Active senders, moderation actions and active guests reflect the selected window. Relayed message counts are derived state kept for about a day, so that column is always the last 24 hours.</p>
+<% end %>

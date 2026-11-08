@@ -1,0 +1,322 @@
+<header>
+  <h1><%= h(@room_label) %></h1>
+  <span class="guest-tag">guest</span>
+  <span class="sub">You are <strong><%= h(@invite.nickname) %></strong>, a temporary guest. Access ends <%= h(format_time(@expires_at)) %>.</span>
+</header>
+
+<div id="banner" class="notice" hidden></div>
+
+<main id="log" aria-live="polite"></main>
+
+<div id="retention-notice" class="notice retention">
+  <span>Messages sent or shown here are stored until <strong><%= h(format_time(@retained_until)) %></strong>, then permanently deleted.</span>
+  <button id="retention-dismiss" type="button" aria-label="Dismiss">&times;</button>
+</div>
+
+<form id="composer" class="composer" autocomplete="off">
+  <label id="attach" class="attach" title="Attach a file" aria-label="Attach a file">
+    <input id="file" type="file" hidden>
+    <span aria-hidden="true">+</span>
+  </label>
+  <input id="body" name="body" type="text" maxlength="4000" placeholder="Message" aria-label="Message">
+  <button id="send" type="submit">Send</button>
+</form>
+
+<div id="config"
+     data-token="<%= h(params[:token]) %>"
+     data-cursor="<%= h(@cursor) %>"
+     data-max-upload="<%= h(Rubotty::GuestPortal::App::MAX_UPLOAD_BYTES) %>"
+     data-base="<%= h(request.script_name) %>"
+     hidden></div>
+
+<script>
+  (function () {
+    var cfg = document.getElementById("config");
+    var token = cfg.getAttribute("data-token");
+    var cursor = parseInt(cfg.getAttribute("data-cursor"), 10) || 0;
+    var maxUpload = parseInt(cfg.getAttribute("data-max-upload"), 10) || 0;
+    // The mount prefix (empty standalone, e.g. "/guest-chat" when mounted under a
+    // path), so every fetch and the SSE stream resolve under the mount.
+    var mount = cfg.getAttribute("data-base") || "";
+    var base = mount + "/g/" + encodeURIComponent(token);
+
+    var log = document.getElementById("log");
+    var form = document.getElementById("composer");
+    var input = document.getElementById("body");
+    var sendBtn = document.getElementById("send");
+    var fileInput = document.getElementById("file");
+    var banner = document.getElementById("banner");
+    var ended = false;
+    var source = null;   // the EventSource, when streaming
+    var pollTimer = null; // the polling fallback interval, when polling
+
+    // The retention notice: closing it hides the element for the rest of this
+    // tab's session, through sessionStorage, so it reappears on a fresh link.
+    // Best effort, and a browser with storage disabled shows it every time.
+    (function () {
+      var notice = document.getElementById("retention-notice");
+      var dismiss = document.getElementById("retention-dismiss");
+      if (!notice || !dismiss) { return; }
+      var key = "rubotty-guest-retention-dismissed";
+      try {
+        if (sessionStorage.getItem(key)) { notice.hidden = true; }
+      } catch (e) { /* storage unavailable; the notice just always shows */ }
+      dismiss.addEventListener("click", function () {
+        notice.hidden = true;
+        try { sessionStorage.setItem(key, "1"); } catch (e) { /* nothing to persist to */ }
+      });
+    })();
+
+    function atBottom() {
+      return log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+    }
+    function scrollDown() { log.scrollTop = log.scrollHeight; }
+
+    function showBanner(text, warn) {
+      banner.textContent = text;
+      banner.className = "notice" + (warn ? " warn" : "");
+      banner.hidden = false;
+    }
+
+    function endSession(text) {
+      ended = true;
+      input.disabled = true;
+      sendBtn.disabled = true;
+      if (fileInput) { fileInput.disabled = true; }
+      stopStream();
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      showBanner(text || "This guest session has ended.", true);
+    }
+
+    // Whether a feed row is already on screen. Every rendered element carries its
+    // feed id, so a row both the stream and a fallback poll deliver is drawn once.
+    function seen(id) {
+      return id != null && log.querySelector('[data-mid="' + id + '"]');
+    }
+
+    function bubbleRow(id) {
+      return id == null ? null : log.querySelector('.row[data-mid="' + id + '"]');
+    }
+
+    // A rich-inbound event: update, remove or annotate the bubble it names.
+    // Silently ignored when that bubble is not on screen, which is harmless.
+    function applyEvent(m) {
+      if (m.ref == null) { return; }
+      if (m.kind === "delete") {
+        var nodes = log.querySelectorAll('[data-mid="' + m.ref + '"]');
+        for (var i = 0; i < nodes.length; i++) { nodes[i].remove(); }
+        return;
+      }
+      var row = bubbleRow(m.ref);
+      if (!row) { return; }
+      if (m.kind === "edit") {
+        var text = row.querySelector(".text");
+        if (text) { text.textContent = m.body || ""; }
+        row.classList.add("edited");
+      } else if (m.kind === "reaction") {
+        var footer = row.querySelector(".reactions");
+        if (footer) {
+          footer.textContent = m.body || "";
+          footer.hidden = !(m.body && m.body.length);
+        }
+      }
+    }
+
+    function renderEntry(m) {
+      if (m.kind === "edit" || m.kind === "delete" || m.kind === "reaction") {
+        applyEvent(m);
+        return;
+      }
+      if (seen(m.id)) { return; }
+      renderMessage(m);
+    }
+
+    function renderMessage(m) {
+      if (m.kind && m.kind !== "chat") {
+        var sys = document.createElement("div");
+        sys.className = "system";
+        sys.setAttribute("data-mid", m.id);
+        sys.textContent = m.body || m.author;
+        log.appendChild(sys);
+        return;
+      }
+      var mine = !!m.mine;
+      var row = document.createElement("div");
+      row.className = "row " + (mine ? "me" : "them");
+      row.setAttribute("data-mid", m.id);
+      var bubble = document.createElement("div");
+      bubble.className = "bubble " + (mine ? "me" : "them");
+      // Who sent it, on its own line inside the bubble. The server splits the label
+      // so only the identity is bold: "alex" bold, "@telegram" plain.
+      if (!mine && m.author) {
+        var parts = m.author_parts || ["", m.author, ""];
+        var who = document.createElement("div");
+        who.className = "who";
+        who.appendChild(document.createTextNode(parts[0]));
+        var name = document.createElement("b");
+        name.className = "name";
+        name.textContent = parts[1];
+        who.appendChild(name);
+        who.appendChild(document.createTextNode(parts[2] + ":"));
+        bubble.appendChild(who);
+      }
+      var text = document.createElement("span");
+      text.className = "text";
+      if (m.body) { text.textContent = m.body; }
+      bubble.appendChild(text);
+      (m.attachments || []).forEach(function (att) {
+        if (att.kind === "photo" && att.url) {
+          var img = document.createElement("img");
+          img.src = att.url;
+          img.alt = att.filename || "image";
+          bubble.appendChild(img);
+        } else if (att.url) {
+          var a = document.createElement("a");
+          a.href = att.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+          a.textContent = att.filename || att.kind || "attachment";
+          bubble.appendChild(document.createElement("br"));
+          bubble.appendChild(a);
+        } else {
+          var named = document.createElement("span");
+          named.className = "attachment-name";
+          named.textContent = (att.filename || att.kind || "attachment") + " (not shown here)";
+          bubble.appendChild(document.createElement("br"));
+          bubble.appendChild(named);
+        }
+      });
+      var footer = document.createElement("div");
+      footer.className = "reactions";
+      footer.hidden = true;
+      bubble.appendChild(footer);
+      row.appendChild(bubble);
+      log.appendChild(row);
+    }
+
+    // Apply one poll or stream payload. Returns true once the session has ended.
+    function apply(data) {
+      if (data.ended) { endSession(); return true; }
+      var stick = atBottom();
+      (data.messages || []).forEach(renderEntry);
+      if (typeof data.cursor === "number") { cursor = data.cursor; }
+      if ((data.messages || []).length && stick) { scrollDown(); }
+      return false;
+    }
+
+    function poll() {
+      if (ended) { return; }
+      fetch(base + "/messages.json?since=" + cursor, { headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.json(); })
+        .then(apply)
+        .catch(function () { /* transient; the next tick retries */ });
+    }
+
+    // The fallback: used when EventSource is unavailable or the stream drops.
+    function startPolling() {
+      if (pollTimer || ended) { return; }
+      poll();
+      pollTimer = setInterval(poll, 2000);
+    }
+
+    var streamConfirmTimer = null;
+
+    function stopStream() {
+      if (streamConfirmTimer) { clearTimeout(streamConfirmTimer); streamConfirmTimer = null; }
+      if (source) { source.close(); source = null; }
+    }
+
+    // How long to wait for the FIRST byte of the stream before giving up on it.
+    // A proxy or app server that fully buffers a chunked response (some do,
+    // silently) leaves the browser's EventSource sitting in "connecting"
+    // forever: the connection never technically errors, so source.onerror
+    // never fires and the ordinary error-triggered fallback below never runs.
+    // This is that fallback's own trigger: no event within the window means
+    // the stream is not really live, whatever the reason, so stop waiting on
+    // it and poll instead.
+    var SSE_CONFIRM_TIMEOUT_MS = 8000;
+
+    // The primary transport: server-sent events. On any error (the browser lacks
+    // EventSource, the proxy will not stream, or the connection drops) fall back to
+    // polling for the rest of the session, so the window keeps updating regardless.
+    function startStream() {
+      if (!window.EventSource) { startPolling(); return; }
+      try {
+        source = new EventSource(base + "/stream?since=" + cursor);
+      } catch (e) {
+        startPolling();
+        return;
+      }
+      streamConfirmTimer = setTimeout(function () {
+        streamConfirmTimer = null;
+        stopStream();
+        if (!ended) { startPolling(); }
+      }, SSE_CONFIRM_TIMEOUT_MS);
+      source.onmessage = function (e) {
+        if (streamConfirmTimer) { clearTimeout(streamConfirmTimer); streamConfirmTimer = null; }
+        var data;
+        try { data = JSON.parse(e.data); } catch (err) { return; }
+        apply(data);
+      };
+      source.onerror = function () {
+        stopStream();
+        if (!ended) { startPolling(); }
+      };
+    }
+
+    // The guest's own send echoes back through the feed. With the stream open it
+    // arrives on its own within a second; while polling, fetch it promptly.
+    function refreshSoon() {
+      if (!source) { poll(); }
+    }
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (ended) { return; }
+      var body = input.value.trim();
+      if (!body) { return; }
+      sendBtn.disabled = true;
+      var payload = "body=" + encodeURIComponent(body);
+      fetch(base + "/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
+        body: payload
+      }).then(function (r) {
+        if (r.status === 429) { showBanner("You are sending messages too quickly. Please slow down.", true); return; }
+        if (r.status === 410) { endSession(); return; }
+        if (r.ok) { input.value = ""; banner.hidden = true; refreshSoon(); }
+      }).catch(function () { /* leave the text so the guest can retry */ })
+        .then(function () { if (!ended) { sendBtn.disabled = false; } });
+    });
+
+    if (fileInput) {
+      fileInput.addEventListener("change", function () {
+        if (ended || !fileInput.files || !fileInput.files.length) { return; }
+        var file = fileInput.files[0];
+        if (maxUpload && file.size > maxUpload) {
+          showBanner("That file is too large.", true);
+          fileInput.value = "";
+          return;
+        }
+        var fd = new FormData();
+        fd.append("file", file);
+        var caption = input.value.trim();
+        if (caption) { fd.append("body", caption); }
+        sendBtn.disabled = true;
+        fetch(base + "/upload", { method: "POST", body: fd, headers: { "Accept": "application/json" } })
+          .then(function (r) {
+            if (r.status === 429) { showBanner("You are sending messages too quickly. Please slow down.", true); return; }
+            if (r.status === 413) { showBanner("That file is too large.", true); return; }
+            if (r.status === 410) { endSession(); return; }
+            /* The file store is not reachable. The chat is unaffected, so say
+               that rather than letting this look like the session ending. */
+            if (r.status === 503) { showBanner("Uploads are unavailable right now. Your messages still work.", true); return; }
+            if (!r.ok) { showBanner("That file could not be sent.", true); return; }
+            input.value = ""; banner.hidden = true; refreshSoon();
+          })
+          .catch(function () { /* leave the picker so the guest can retry */ })
+          .then(function () { fileInput.value = ""; if (!ended) { sendBtn.disabled = false; } });
+      });
+    }
+
+    startStream();
+  })();
+</script>

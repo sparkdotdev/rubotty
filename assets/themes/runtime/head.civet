@@ -1,0 +1,12 @@
+// The whole of the blocking head script, inlined into <head> by the dashboard
+// layout above every stylesheet.
+//
+// This is the reason mode is kept in the browser at all. A server round trip
+// cannot answer before the first paint, so a page whose mode came from the
+// session would show one frame of the wrong theme on every single load, which
+// is the most visible thing this layer can get wrong. Nothing else belongs in
+// here: it is parsed and run before anything on the page renders.
+
+import { restore } from "./mode-storage.civet"
+
+restore()

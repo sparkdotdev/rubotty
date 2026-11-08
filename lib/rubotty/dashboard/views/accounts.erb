@@ -1,0 +1,130 @@
+<h1>Accounts</h1>
+
+<div class="card">
+  <p class="muted">
+    An <strong>account</strong> is one credentialed connection to a platform: a bot token and the transport
+    settings that go with it. It is <strong>deployment-wide, not per community</strong>, because one bot
+    serves every community at once; which community a message belongs to is worked out afterwards, from the
+    channel it arrived in.
+  </p>
+  <p class="muted">
+    Accounts added here live in the database. The ones imported from <code>bridge.config.yaml</code> are
+    shown too, and that file still works exactly as before: on a name clash the file wins.
+  </p>
+  <p class="muted">
+    <strong>A new or changed account needs a bot restart to take effect.</strong> Every other setting in this
+    dashboard reaches the running bot within seconds; an account is a live connection, so it is opened when
+    the bot boots. A restart, not a redeploy.
+  </p>
+  <p class="muted">
+    <strong>No secret is ever entered or stored here.</strong> A token field asks for the NAME of an
+    environment variable (<code>TELEGRAM_BOT_TOKEN</code>), and the value has to be set in the deployment's
+    environment separately.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Add an account</h2>
+  <form method="get" action="<%= request.script_name %>/accounts">
+    <div class="row">
+      <div>
+        <label>Platform</label>
+        <select name="adapter">
+          <% @adapter_names.each do |adapter| %>
+            <option value="<%= h(adapter) %>" <%= adapter.to_s == @new_adapter.to_s ? "selected" : "" %>><%= h(adapter) %></option>
+          <% end %>
+        </select>
+      </div>
+      <div><button type="submit">Choose</button></div>
+    </div>
+  </form>
+  <p class="note">
+    Pick a platform first: each one declares its own settings, so there is no single set of fields to show
+    until you have chosen.
+  </p>
+</div>
+
+<% if @new_adapter %>
+  <div class="card">
+    <h2>New <%= h(@new_adapter) %> account</h2>
+    <form method="post" action="<%= request.script_name %>/accounts">
+      <input type="hidden" name="adapter" value="<%= h(@new_adapter) %>">
+      <div class="cfg-field">
+        <label>Name *</label>
+        <p class="note">
+          The account's key, e.g. <code><%= h(@new_adapter) %></code> or <code><%= h(@new_adapter) %>_2</code>.
+          Channels reference it by this name, so it cannot be changed later.
+        </p>
+        <input type="text" name="name" value="">
+      </div>
+      <% @new_schema.fields.each_value do |field| %>
+        <div class="cfg-field">
+          <label><%= h(field.name.to_s.tr("_", " ").capitalize) %><%= field.required ? " *" : "" %></label>
+          <% if field.description %><p class="note"><%= h(field.description) %></p><% end %>
+          <%= account_field_control(field, field.default) %>
+          <% if field.type == :array %><p class="note"><%= h(config_field_entry_hint(field)) %></p><% end %>
+        </div>
+      <% end %>
+      <div class="row" style="margin-top:0.6rem;">
+        <div><button type="submit">Add account</button></div>
+      </div>
+    </form>
+  </div>
+<% end %>
+
+<% if @accounts.empty? %>
+  <div class="card muted">
+    No accounts in the database yet. They are imported from <code>bridge.config.yaml</code> the next time the
+    bot boots, or you can add one above.
+  </div>
+<% end %>
+
+<% @accounts.each do |account| %>
+  <% settings = account.json_value(:settings) %>
+  <% schema = account_schema(account.adapter) %>
+  <% token_env = settings["token_env"] %>
+  <div class="card">
+    <h2>
+      <code><%= h(account.adapter) %>/<%= h(account.name) %></code>
+      <span class="pill <%= account.source == "yaml_seed" ? "off" : "on" %>">
+        <%= account.source == "yaml_seed" ? "from bridge.config.yaml" : "added here" %>
+      </span>
+    </h2>
+    <% if token_env %>
+      <p>
+        Token env <code><%= h(token_env) %></code>
+        <span class="pill <%= token_env_set?(token_env) ? "on" : "off" %>">
+          <%= token_env_set?(token_env) ? "key present" : "not set in this process" %>
+        </span>
+      </p>
+    <% end %>
+
+    <% if schema.nil? %>
+      <p class="muted">
+        No adapter is registered under <code><%= h(account.adapter) %></code> in this process, so this
+        account's settings cannot be shown or edited here. It is skipped at boot.
+      </p>
+    <% else %>
+      <details>
+        <summary>Edit</summary>
+        <form method="post" action="<%= request.script_name %>/accounts/<%= h(account.id) %>">
+          <% schema.fields.each_value do |field| %>
+            <div class="cfg-field">
+              <label><%= h(field.name.to_s.tr("_", " ").capitalize) %><%= field.required ? " *" : "" %></label>
+              <% if field.description %><p class="note"><%= h(field.description) %></p><% end %>
+              <%= account_field_control(field, account_field_value(field, settings)) %>
+              <% if field.type == :array %><p class="note"><%= h(config_field_entry_hint(field)) %></p><% end %>
+            </div>
+          <% end %>
+          <div class="row" style="margin-top:0.6rem;">
+            <div><button type="submit">Save</button></div>
+          </div>
+        </form>
+      </details>
+    <% end %>
+
+    <form class="inline" method="post" action="<%= request.script_name %>/accounts/<%= h(account.id) %>/delete">
+      <button class="danger" type="submit">Remove</button>
+    </form>
+  </div>
+<% end %>

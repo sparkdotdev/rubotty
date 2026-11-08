@@ -1,0 +1,190 @@
+# The base vulgarity and slur list the word filter ships with: a vendored
+# SNAPSHOT of the language core's vulgarity-override.yaml, re-synced manually
+# and never fetched at runtime; re-copy the two term lists below when
+# upstream changes. Matching is case-insensitive, on WORD BOUNDARIES, never
+# as a substring, and curated for precision over recall (cock, ass, pussy,
+# tit, screw stay out) so "Scunthorpe" never trips it. A per-scope `mode`
+# picks off/slurs/slurs_profanity; `custom` words always apply on top, and
+# the older `vulgarity_mode` field is still read when `mode` is unset.
+
+# Vulgar: sexual, scatological, or crude profanity that reads as vulgar in any
+# context. Alphabetical.
+vulgar:
+  - arsehole
+  - arsewipe
+  - asshat
+  - asshole
+  - assholes
+  - ballsack
+  - bellend
+  - blowjob
+  - bollocks
+  - buggery
+  - bukkake
+  - bullshit
+  - butthole
+  - buttplug
+  - circlejerk
+  - clusterfuck
+  - cocksucker
+  - cum
+  - cumming
+  - cumshot
+  - cunnilingus
+  - cunt
+  - cunts
+  - deepthroat
+  - dickhead
+  - dickwad
+  - dildo
+  - dipshit
+  - douchebag
+  - dumbfuck
+  - ejaculate
+  - ejaculation
+  - felching
+  - fellatio
+  - fingerbang
+  - fuck
+  - fucked
+  - fucker
+  - fuckhead
+  - fucking
+  - fuckwit
+  - gangbang
+  - handjob
+  - horseshit
+  - jack off
+  - jackoff
+  - jerk off
+  - jerkoff
+  - jism
+  - jizz
+  - masturbate
+  - masturbation
+  - motherfucker
+  - motherfucking
+  - nutsack
+  - piss off
+  - pissed off
+  - precum
+  - rimjob
+  - scrotum
+  - semen
+  - shit
+  - shithead
+  - shithole
+  - shitty
+  - skank
+  - slut
+  - spunk
+  - testicle
+  - testicles
+  - titties
+  - turd
+  - twat
+  - wank
+  - wanker
+  - whore
+
+# Slur: identity and ethnic slurs, every one of which is always a slur and never
+# an ordinary word. Alphabetical.
+slur:
+  - chink
+  - coon
+  - dyke
+  - faggot
+  - fag
+  - gook
+  - kike
+  - nigger
+  - poof
+  - raghead
+  - spastic
+  - spic
+  - tranny
+  - wetback
+  - wop
+
+# Parts of speech, so a rule that REPLACES a word can pick one that fits the
+# sentence. Kept as its own map so a re-sync can overwrite the term lists
+# above without touching this; only the vulgar list is annotated, since a
+# slur is deleted rather than swapped, and a term absent from here reads as
+# a noun.
+parts_of_speech:
+  arsehole: noun
+  arsewipe: noun
+  asshat: noun
+  asshole: noun
+  assholes: plural
+  ballsack: noun
+  bellend: noun
+  blowjob: noun
+  bollocks: plural
+  buggery: noun
+  bukkake: noun
+  bullshit: noun
+  butthole: noun
+  buttplug: noun
+  circlejerk: noun
+  clusterfuck: noun
+  cocksucker: noun
+  cum: noun
+  cumming: gerund
+  cumshot: noun
+  cunnilingus: noun
+  cunt: noun
+  cunts: plural
+  deepthroat: verb
+  dickhead: noun
+  dickwad: noun
+  dildo: noun
+  dipshit: noun
+  douchebag: noun
+  dumbfuck: noun
+  ejaculate: verb
+  ejaculation: noun
+  felching: gerund
+  fellatio: noun
+  fingerbang: verb
+  fuck: verb
+  fucked: past
+  fucker: noun
+  fuckhead: noun
+  fucking: adjective
+  fuckwit: noun
+  gangbang: noun
+  handjob: noun
+  horseshit: noun
+  jack off: verb
+  jackoff: noun
+  jerk off: verb
+  jerkoff: noun
+  jism: noun
+  jizz: noun
+  masturbate: verb
+  masturbation: noun
+  motherfucker: noun
+  motherfucking: adjective
+  nutsack: noun
+  piss off: verb
+  pissed off: past
+  precum: noun
+  rimjob: noun
+  scrotum: noun
+  semen: noun
+  shit: noun
+  shithead: noun
+  shithole: noun
+  shitty: adjective
+  skank: noun
+  slut: noun
+  spunk: noun
+  testicle: noun
+  testicles: plural
+  titties: plural
+  turd: noun
+  twat: noun
+  wank: verb
+  wanker: noun
+  whore: noun

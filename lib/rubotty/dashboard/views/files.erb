@@ -1,0 +1,50 @@
+<h1><%= h(@community.name) %>: files</h1>
+
+<div class="card muted">
+  Every file rubotty is currently holding for this community: one a platform would not carry and rubotty
+  rehosted in its place, or one somebody uploaded straight through the guest portal or the admin API. The
+  download link's UUID is the whole credential and it is never stored, only its digest is, so nothing on
+  this page can show or reissue a working link. Deleting marks a file for removal on the next reclaim
+  sweep; its link stops working immediately either way.
+</div>
+
+<% if @usage_bytes && @quota_bytes %>
+  <div class="card">
+    <p>
+      Currently holding <strong><%= h(human_bytes(@usage_bytes)) %></strong>
+      of a <%= h(human_bytes(@quota_bytes)) %> quota for this community
+      <span class="pill <%= @usage_bytes >= @quota_bytes ? "off" : "on" %>">
+        <%= @usage_bytes >= @quota_bytes ? "quota full" : "under quota" %>
+      </span>
+    </p>
+  </div>
+<% end %>
+
+<% if @files.nil? %>
+  <div class="card muted">This deployment has no file store configured, so there is nothing to show.</div>
+<% elsif @files.empty? %>
+  <div class="card muted">Nothing is currently held for this community.</div>
+<% else %>
+  <table>
+    <thead>
+      <tr><th>Filename</th><th>Room</th><th>Uploaded by</th><th>Size</th><th>Expires</th><th></th></tr>
+    </thead>
+    <tbody>
+      <% @files.each do |file| %>
+        <tr>
+          <td><%= h(file.filename) %></td>
+          <td><code><%= h(file.room_key.to_s.empty? ? "-" : file.room_key) %></code></td>
+          <td><code><%= h(file.created_by.to_s.empty? ? "-" : file.created_by) %></code></td>
+          <td><%= h(human_bytes(file.byte_size)) %></td>
+          <td><%= h(file.expires_at.strftime("%Y-%m-%d %H:%M UTC")) %></td>
+          <td>
+            <form class="inline" method="post"
+                  action="<%= request.script_name %>/communities/<%= h(@community.slug) %>/files/<%= file.id %>/delete">
+              <button class="danger" type="submit">Delete</button>
+            </form>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>

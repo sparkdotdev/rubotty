@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>rubotty</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+           font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+           background: #12171d; color: #e4e8ec; padding: 2rem 1.2rem; line-height: 1.5; }
+    main { width: 100%; max-width: 640px; }
+    h1 { font-size: 1.8rem; margin: 0 0 0.3rem; text-align: center; }
+    p.sub { margin: 0 0 1.8rem; color: #9fb2c6; font-size: 0.95rem; text-align: center; }
+    .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+    a.choice { display: block; text-decoration: none; color: inherit; background: #1c232b;
+               border: 1px solid #2b333d; border-radius: 10px; padding: 1.3rem 1.4rem;
+               box-shadow: 0 8px 30px rgba(0,0,0,0.35); transition: border-color 0.15s, transform 0.15s; }
+    a.choice:hover { border-color: #2b6cb0; transform: translateY(-2px); }
+    a.choice .name { font-size: 1.15rem; font-weight: 700; color: #fff; }
+    a.choice .desc { font-size: 0.88rem; color: #9fb2c6; margin-top: 0.35rem; }
+    a.choice .go { display: inline-block; margin-top: 0.9rem; font-size: 0.85rem; font-weight: 600;
+                   color: #6ea8e0; }
+    footer { margin-top: 1.8rem; text-align: center; color: #6b7684; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>rubotty</h1>
+    <p class="sub">A shared community bridge. Pick where you are headed.</p>
+    <div class="choices">
+      <a class="choice" href="<%= h(mount(settings.guest_path)) %>">
+        <div class="name">Guest Access</div>
+        <div class="desc">Join a conversation with an invite link. No account, just the link you were given.</div>
+        <span class="go">Open the guest chat &rarr;</span>
+      </a>
+      <a class="choice" href="<%= h(mount(settings.admin_path)) %>">
+        <div class="name">Admin Portal</div>
+        <div class="desc">The operator dashboard for running communities. Sign in with the dashboard secret.</div>
+        <span class="go">Open the dashboard &rarr;</span>
+      </a>
+    </div>
+    <footer>Guests need an invite link. Operators need the dashboard secret.</footer>
+  </main>
+</body>
+</html>

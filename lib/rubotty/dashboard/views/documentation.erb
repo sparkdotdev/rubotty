@@ -1,0 +1,5 @@
+<%= page(title: "Documentation", variant: :wide,
+         sections: section(variant: :plain,
+                           body: prose(document: :scripting, app_root: request.script_name)) +
+                   section(variant: :plain,
+                           body: prose(document: :readme, app_root: request.script_name))) %>

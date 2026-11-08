@@ -1,0 +1,61 @@
+// Start the required dashboard theme from the document the server already
+// rendered. The content staging area stays hidden until this has mounted the
+// shell, so an unthemed panel never reaches the screen.
+//
+// A start that fails leaves the page where it is, and settle() below is what
+// puts it on screen anyway: hidden is how the panel avoids a flash, and it
+// must never become how the panel disappears.
+
+function shellData(): any
+  node := document.getElementById "rb-shell-data"
+  return null unless node
+
+  JSON.parse node.textContent ?? ""
+
+// Whether the page is still on the staging shelf, which is the whole question
+// of whether anything drew it: a theme that mounts its chrome MOVES the page
+// into its own slot, so a page still parented here was taken over by nothing.
+function staged(staging: any): boolean
+  return false unless staging
+
+  document.getElementById("rb-content")?.parentNode is staging
+
+// The last word on whether the staged page is on screen, either way round: a
+// theme that took the page has left an empty shelf and it stays out of the
+// way, and one that did not has left the panel, which has to be visible.
+function settle(staging: any): void
+  return unless staging
+
+  if staged staging
+    staging.removeAttribute "hidden"
+  else
+    staging.setAttribute "hidden", ""
+
+// A save's notice sits above the page content, which a phone layout can push below the fold.
+function revealFlash(): void
+  flash := document.querySelector "#rb-content > .flash"
+  return unless flash and typeof flash.scrollIntoView is "function"
+
+  box := flash.getBoundingClientRect()
+  return if box.top >= 0 and box.bottom <= window.innerHeight
+
+  flash.scrollIntoView block: "center"
+
+async function boot(): Promise<void>
+  root := document.documentElement
+  staging := document.getElementById "rb-staging"
+  try
+    await rubottyTheme.start(
+      base: root.dataset.rbBase ?? ""
+      root: document.getElementById "rb-view"
+      shell: document.getElementById "rb-shell"
+      content: document.getElementById "rb-content"
+      footer: document.getElementById "rb-footer"
+      nav: shellData()
+      sections: root.dataset.rbThemedSection is "true"
+    )
+  finally
+    settle staging
+    revealFlash()
+
+boot().catch (error: any) => console?.error? "rubotty theme could not start", error

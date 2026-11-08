@@ -1,0 +1,203 @@
+/* The primitive vocabulary as the un-themed dashboard draws it, one rule per
+   class Primitives emits and nothing else. Served only while the theme layer
+   is off: with it on, the linked theme stylesheet is the one implementation of
+   these classes, which is what keeps a property a theme leaves alone from
+   being decided here instead.
+
+   Colour reads from the swatch's custom properties, with fallback.css's own
+   tokens behind them for a page whose swatch did not arrive either. */
+@layer rubotty-fallback {
+  .rb-page { display: block; }
+  .rb-page--default { max-width: 960px; }
+  .rb-page--wide { max-width: 1400px; }
+  .rb-page-title { font-size: var(--fs-lg); margin: 0.2rem 0 0.6rem;
+                   color: var(--rb-header-text, var(--fb-heading)); }
+  .rb-page-lede { margin: 0 0 1.2rem; max-width: 62ch; color: var(--rb-muted-text, var(--fb-muted)); }
+  .rb-page-body { display: flex; flex-direction: column; gap: 1rem; }
+  .rb-section { background: var(--rb-surface, var(--fb-surface)); border-radius: 6px; padding: 1rem 1.1rem;
+                box-shadow: var(--fb-surface-shadow); }
+  .rb-section--default { display: block; }
+  /* One form and nothing else, so the box is all the framing it needs. */
+  .rb-section--plain { display: block; }
+  .rb-section--collapsible > .rb-section-title { cursor: pointer; }
+  .rb-section-title { font-size: var(--fs-md); font-weight: 600; margin: 0 0 0.6rem;
+                      color: var(--rb-header-text, var(--fb-heading)); }
+  .rb-section-body { display: flex; flex-direction: column; gap: 0.8rem; }
+  .rb-tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .rb-tab { text-decoration: none; font-size: var(--fs-sm); padding: 0.25rem 0.7rem;
+            border: 1px solid var(--rb-border, var(--fb-tab-rule)); border-radius: 999px;
+            color: var(--rb-content-text, var(--fb-tab-ink)); background: var(--rb-surface, var(--fb-tab)); }
+  .rb-tab--current { background: var(--rb-accent-primary, #2b6cb0);
+                     border-color: var(--rb-accent-primary, #2b6cb0);
+                     color: var(--rb-on-accent, #fff); font-weight: 600; }
+  /* An empty Notice must not look like an explanatory one, which is the
+     single most confusing thing on the nine screens that open with a grey
+     block today. So empty is a dashed outline with no fill and the other
+     four are filled. */
+  .rb-notice { display: flex; align-items: baseline; gap: 0.5rem; margin: 0;
+               padding: 0.6rem 0.9rem; border-radius: 6px; border: 1px solid transparent; }
+  .rb-notice--info { background: var(--rb-surface, var(--fb-head)); color: var(--rb-content-text, var(--fb-chip-ink));
+                     border-color: var(--rb-border, var(--fb-panel-rule)); }
+  .rb-notice--success { background: color-mix(in srgb, var(--rb-success, var(--fb-success-ink)) 12%, var(--rb-surface, var(--fb-surface)));
+                         color: var(--rb-success, var(--fb-success-ink)); }
+  .rb-notice--warning { background: color-mix(in srgb, var(--rb-warning, var(--fb-warning-ink)) 12%, var(--rb-surface, var(--fb-surface)));
+                         color: var(--rb-warning, var(--fb-warning-ink)); }
+  .rb-notice--danger { background: color-mix(in srgb, var(--rb-danger, var(--fb-danger-ink)) 12%, var(--rb-surface, var(--fb-surface)));
+                        color: var(--rb-danger, var(--fb-danger-ink)); }
+  .rb-notice--empty { background: none; border: 1px dashed var(--rb-border, var(--fb-control-rule));
+                      color: var(--rb-muted-text, var(--fb-muted)); font-style: italic; }
+  /* A shape per tone, so a notice is still classifiable in one colour. */
+  .rb-notice-mark { flex: 0 0 auto; width: 0.55rem; height: 0.55rem; border-radius: 2px;
+                    background: currentColor; }
+  .rb-notice--success .rb-notice-mark { border-radius: 999px; }
+  .rb-notice--warning .rb-notice-mark { border-radius: 0; transform: rotate(45deg); }
+  .rb-notice--danger .rb-notice-mark { border-radius: 0; }
+  /* The filter over the rows already on the page, and the count beside it. */
+  .rb-table-toolbar { display: flex; align-items: center; justify-content: space-between;
+                      gap: 0.7rem; margin-bottom: 0.5rem; }
+  .rb-table-filter-field { font: inherit; font-size: var(--fs-sm); padding: 0.3rem 0.5rem;
+                           border: 1px solid var(--rb-border, var(--fb-control-rule)); border-radius: 5px;
+                           background: var(--rb-surface, var(--fb-control)); color: var(--fb-control-ink); }
+  .rb-table-count { font-size: var(--fs-xs); color: var(--rb-muted-text, var(--fb-muted)); }
+  /* A wide table scrolls in its own box rather than pushing the page sideways. */
+  .rb-table-scroll { overflow-x: auto; }
+  .rb-table { border-collapse: collapse; width: 100%; background: var(--rb-surface, var(--fb-surface));
+              border-radius: 6px; overflow: hidden; }
+  .rb-table th, .rb-table td { text-align: left; padding: 0.5rem 0.7rem; vertical-align: top;
+                               font-size: var(--fs-sm);
+                               border-bottom: 1px solid var(--rb-border, var(--fb-rule)); }
+  .rb-table th { background: var(--rb-surface, var(--fb-head)); font-weight: 600; }
+  .rb-table tr:last-child td { border-bottom: 0; }
+  .rb-table-actions { text-align: right; white-space: nowrap; }
+  .rb-align-end { text-align: right; }
+  .rb-form { margin: 0; display: flex; flex-direction: column; gap: 0.7rem; }
+  .rb-form--edit { align-items: stretch; }
+  /* A filter is one row that wraps, and its submit sits on the same line. */
+  .rb-form--filter { flex-direction: row; flex-wrap: wrap; align-items: flex-end; }
+  .rb-form-fields { display: flex; flex-wrap: wrap; gap: 0.7rem; align-items: flex-end; }
+  /* One spacing before the submit row, everywhere, and it is always last. */
+  .rb-form-submit { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.2rem; }
+  /* Named Sections as one longer task form, rather than loose Fields. */
+  .rb-form-body { display: flex; flex-direction: column; gap: 1rem; }
+  /* The action footer: validation on the left, the subordinate controls and
+     the one primary submit pushed to the end of the same row. */
+  .rb-form-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end;
+                     gap: 0.5rem; margin-top: 0.2rem; }
+  .rb-form-actions .rb-form-submit { margin-top: 0; }
+  .rb-form-actions .rb-notice { margin: 0 auto 0 0; }
+  .rb-field { display: flex; flex-direction: column; gap: 0.2rem; }
+  .rb-field--short { flex: 0 0 auto; width: 8rem; }
+  .rb-field--medium { flex: 1 1 16rem; max-width: 24rem; }
+  .rb-field--full { flex: 1 1 100%; width: 100%; }
+  .rb-field-label { font-weight: 600; font-size: var(--fs-base); }
+  .rb-field-required { color: var(--rb-danger, #c2410c); margin-left: 0.15rem; }
+  .rb-field-hint { font-size: var(--fs-xs); color: var(--rb-muted-text, var(--fb-muted)); margin: 0; }
+  /* The tag is named on every control it draws, so a text input weighs what a
+     select does here and the two cannot be decided by different rules. */
+  .rb-field-control,
+  input.rb-field-control,
+  select.rb-field-control,
+  textarea.rb-field-control { font: inherit; width: 100%; padding: 0.4rem 0.55rem;
+                      border: 1px solid var(--rb-border, var(--fb-control-rule)); border-radius: 5px;
+                      background: var(--rb-surface, var(--fb-control)); color: var(--fb-control-ink); }
+  textarea.rb-field-control { min-height: 6rem; font-family: ui-monospace, monospace; }
+  .rb-field-options { display: flex; flex-wrap: wrap; gap: 0.3rem 0.9rem; }
+  .rb-field-option { display: inline-flex; align-items: center; gap: 0.3rem;
+                     font-size: var(--fs-base); }
+  .rb-button { font: inherit; padding: 0.4rem 0.8rem; border-radius: 5px; cursor: pointer;
+               text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem;
+               border: 1px solid var(--rb-accent-primary, #cc342d); }
+  .rb-button--primary { background: var(--rb-accent-primary, #cc342d);
+                        color: var(--rb-on-accent, #fff); }
+  /* Unmistakably neutral rather than an outline in the accent colour, which
+     is what made Disable and Config identical. */
+  .rb-button--secondary { background: var(--rb-surface, var(--fb-surface));
+                          color: var(--rb-content-text, var(--fb-chip-ink));
+                          border-color: var(--rb-border, var(--fb-control-rule)); }
+  /* Destructive differs in SHAPE, because under a swatch whose accent and
+     danger are both red (Ruby, the default) a hue says nothing here. Three
+     differences that survive a monochrome render: a doubled border, the mark
+     below, and the confirm the primitive requires. */
+  .rb-button--destructive { background: var(--rb-surface, var(--fb-surface));
+                            color: var(--rb-danger, #c2410c);
+                            border: 4px double var(--rb-danger, #c2410c); padding: 0.3rem 0.7rem; }
+  .rb-button-mark { display: inline-flex; align-items: center; justify-content: center;
+                    width: 1.05rem; height: 1.05rem; border-radius: 999px; font-weight: 700;
+                    font-size: var(--fs-xs); border: 1px solid currentColor; }
+  .rb-button--flat { background: var(--rb-border, var(--fb-flat));
+                     border: 1px solid var(--rb-border, var(--fb-flat-rule));
+                     color: var(--rb-muted-text, var(--fb-flat-ink)); cursor: not-allowed; }
+  .rb-status { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.1rem 0.55rem;
+               border-radius: 999px; font-size: var(--fs-xs); font-weight: 600;
+               border: 1px solid transparent; }
+  .rb-status-mark { font-weight: 700; }
+  .rb-status--good { background: color-mix(in srgb, var(--rb-success, var(--fb-success-ink)) 12%, var(--rb-surface, var(--fb-surface)));
+                      color: var(--rb-success, var(--fb-success-ink)); }
+  .rb-status--bad { background: color-mix(in srgb, var(--rb-danger, var(--fb-danger-ink)) 12%, var(--rb-surface, var(--fb-surface)));
+                     color: var(--rb-danger, var(--fb-danger-ink)); }
+  .rb-status--warn { background: color-mix(in srgb, var(--rb-warning, var(--fb-warning-ink)) 12%, var(--rb-surface, var(--fb-surface)));
+                      color: var(--rb-warning, var(--fb-warning-ink)); }
+  .rb-status--neutral { background: var(--rb-border, var(--fb-flat));
+                        color: var(--rb-content-text, var(--fb-flat-ink)); }
+  /* Nothing is known about this state, which is not the same as it being off. */
+  .rb-status--unknown { background: none; border-color: var(--rb-border, var(--fb-control-rule));
+                        color: var(--rb-muted-text, var(--fb-muted)); }
+  .rb-tags { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; vertical-align: top; }
+  .rb-tag { display: inline-block; background: var(--rb-border, var(--fb-chip));
+            color: var(--rb-content-text, var(--fb-chip-ink)); border-radius: 999px; padding: 0.05rem 0.5rem;
+            font-size: var(--fs-xs); }
+  .rb-kv { font-size: var(--fs-sm); }
+  .rb-kv--stacked { display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.7rem; }
+  .rb-kv--inline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 1rem; }
+  .rb-kv-key { font-weight: 600; color: var(--rb-muted-text, var(--fb-muted)); }
+  .rb-kv-value { color: var(--rb-content-text, var(--fb-chip-ink)); }
+  .rb-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.8rem; }
+  .rb-stat { background: var(--rb-surface, var(--fb-surface)); border-radius: 6px; padding: 0.8rem;
+             text-align: center; box-shadow: var(--fb-surface-shadow); }
+  .rb-stat-value { font-size: var(--fs-lg); font-weight: 700; }
+  .rb-stat-label { font-size: var(--fs-xs); color: var(--rb-muted-text, var(--fb-muted)); }
+  .rb-stat-detail { margin-top: 0.3rem; font-size: var(--fs-xs); color: var(--rb-muted-text, var(--fb-muted)); }
+  .rb-chart { margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+  .rb-chart-title { font-weight: 600; font-size: var(--fs-base); }
+  .rb-chart-figure { min-height: 170px; }
+  /* The drawing fills the width it is given and keeps its own proportions.
+     Set here rather than inside an engine so a theme can still override it. */
+  .rb-chart-svg { display: block; width: 100%; height: auto; }
+  /* Text inside the drawing takes its colour here rather than from the engine,
+     since SVG text otherwise defaults to black and is unreadable in dark mode. */
+  .rb-chart-label, .rb-chart-value, .rb-chart-tick { font-size: 11px; }
+  .rb-chart-label, .rb-chart-tick { fill: var(--rb-muted-text, var(--fb-muted)); }
+  .rb-chart-value { fill: var(--rb-content-text, var(--fb-chip-ink)); font-weight: 600; }
+  /* The accessible half, and the floor a theme's backend falls back to. */
+  .rb-chart-table { border-collapse: collapse; width: 100%; font-size: var(--fs-sm); }
+  .rb-chart-table th, .rb-chart-table td { padding: 0.3rem 0.5rem; text-align: left;
+                                           border-bottom: 1px solid var(--rb-border, var(--fb-rule)); }
+  .rb-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-sm); }
+  .rb-code--inline { background: none; padding: 0; }
+  .rb-code--block { display: block; background: var(--rb-surface, var(--fb-pre)); padding: 0.5rem 0.7rem;
+                    border: 1px solid var(--rb-border, var(--fb-panel-rule)); border-radius: 5px;
+                    overflow-x: auto; margin: 0; }
+  /* A rendered markdown document: the README, the scripting reference and
+     the licence. Every element inside is drawn by Kramdown rather than by a
+     primitive, so this is the one block that styles bare tags on purpose. */
+  .rb-prose { max-width: 100%; overflow-x: auto; }
+  .rb-prose img { max-width: 100%; }
+  .rb-prose h1, .rb-prose h2, .rb-prose h3 { margin-top: 1.4rem; }
+  .rb-prose h1:first-child, .rb-prose h2:first-child, .rb-prose h3:first-child { margin-top: 0; }
+  .rb-prose h1 { font-size: 1.3rem; }
+  .rb-prose h2 { font-size: var(--fs-md); border-bottom: 1px solid var(--fb-rule); padding-bottom: 0.3rem; }
+  .rb-prose h3 { font-size: 1rem; }
+  .rb-prose a { color: var(--fb-link); }
+  .rb-prose hr { border: 0; border-top: 1px solid var(--fb-rule); margin: 1.2rem 0; }
+  .rb-prose blockquote { margin: 0 0 1rem; padding: 0.2rem 1rem; border-left: 3px solid var(--fb-panel-rule);
+                         color: var(--fb-muted); }
+  .rb-prose table { margin-bottom: 1rem; }
+  /* The section list a long document gets ahead of it, drawn from headings
+     Kramdown already gave an id, so it is its own bordered block rather than
+     more of the prose it points into. */
+  .rb-prose-toc { margin: 0 0 1rem; padding: 0.6rem 0.9rem; border: 1px solid var(--rb-border, var(--fb-panel-rule));
+                  background: var(--rb-surface, var(--fb-head)); }
+  .rb-prose-toc p { margin: 0 0 0.3rem; font-weight: 600; color: var(--rb-muted-text, var(--fb-muted)); }
+  .rb-prose-toc ul { margin: 0; padding: 0; list-style: none; }
+  .rb-prose-toc a { color: var(--fb-link); }
+}
