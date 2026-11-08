@@ -73,7 +73,7 @@ function attributes(pairs: any): string
   ).join ""
 
 // How a value reaches a page, ported from Primitives::Format. Every value a
-// themed section draws goes through here, so a raw second count or a raw
+// client-rendered section draws goes through here, so a raw second count or a raw
 // second-timestamp never lands on screen just because the client draws it
 // instead of the server.
 DURATION_UNITS := [
@@ -172,7 +172,7 @@ function boolean(value: any): string
 function durations(values: any): string
   (values ?? []).map((value: any) => duration(value)).join ", "
 
-// Every value a themed section draws goes through here, named by what it is,
+// Every value a client-rendered section draws goes through here, named by what it is,
 // mirroring Primitives::Format.value.
 function formatValue(raw: any, as: string = "text"): string
   switch as
@@ -599,7 +599,7 @@ function field(opts: any): string
 // draws, Add preset being a second way to add one: mappingListRow draws the
 // same row either way, pre-filled from whichever entry_presets option the
 // select next to it currently holds rather than left blank. Delegation from
-// the runtime keeps this alive across a themed redraw.
+// the runtime keeps this alive across a client redraw.
 function editMappingList(target: any): boolean
   control := target?.closest?(
     "[data-mapping-list-add], [data-mapping-list-remove], [data-mapping-list-preset-add]"

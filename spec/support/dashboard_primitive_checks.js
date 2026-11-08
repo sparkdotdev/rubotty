@@ -6,11 +6,11 @@
 // loads, rather than the Civet source, so a compiler regression would show up
 // here too.
 //
-// Usage: node theme_primitive_checks.js <runtime.js>
+// Usage: node dashboard_primitive_checks.js <runtime.js>
 // Prints { checks: [{ name, ok, detail }], samples: { name: html }, exports:
 // [name] } to stdout. samples is one render per emitter so the Ruby spec can
 // hold the classes they draw to Primitives::CLASSES before any screen draws
-// them, and exports is what the bundle actually hangs off rubottyTheme so the
+// them, and exports is what the bundle actually hangs off rubottyDashboard so the
 // same spec can hold the client set to the Ruby one.
 
 "use strict";
@@ -22,8 +22,8 @@ function run(runtimePath) {
   const sandbox = { console };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
-  vm.runInContext(fs.readFileSync(runtimePath, "utf8"), sandbox, { filename: "theme-runtime.js" });
-  const rt = sandbox.rubottyTheme;
+  vm.runInContext(fs.readFileSync(runtimePath, "utf8"), sandbox, { filename: "dashboard-runtime.js" });
+  const rt = sandbox.rubottyDashboard;
 
   const checks = [];
   const expectThrows = (name, fn) => {

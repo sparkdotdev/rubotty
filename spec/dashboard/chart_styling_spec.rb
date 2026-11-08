@@ -9,9 +9,9 @@ require "rubotty/dashboard"
 # only check that catches a colour written down by hand.
 RSpec.describe "the chart layer" do
   CHART_LAYOUT = File.expand_path("../../lib/rubotty/dashboard/views/layout.erb", __dir__)
-  CHART_RUNTIME = File.expand_path("../../assets/themes/runtime/chart.civet", __dir__)
-  CHART_ENGINE = File.expand_path("../../assets/themes/runtime/chart-renderer.civet", __dir__)
-  CHART_BOOT = File.expand_path("../../assets/themes/runtime/chart-boot.civet", __dir__)
+  CHART_RUNTIME = File.expand_path("../../assets/dashboard/runtime/chart.civet", __dir__)
+  CHART_ENGINE = File.expand_path("../../assets/dashboard/runtime/chart-renderer.civet", __dir__)
+  CHART_BOOT = File.expand_path("../../assets/dashboard/runtime/chart-boot.civet", __dir__)
 
   # A hex colour, or an rgb()/hsl() call. Both are how a colour gets written
   # down instead of being asked for by role.

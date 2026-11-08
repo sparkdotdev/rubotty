@@ -1,11 +1,4 @@
-// Mode: the light, dark or system choice, and the only piece of theme state
-// kept in the browser rather than on the server. Theme and swatch are per
-// operator and server side; mode is environmental, since wanting dark at
-// night and light at noon on the same machine is one person with two
-// reasonable answers, and syncing that across machines takes it from them.
-//
-// Its own file, rather than part of the runtime, since the head script
-// imports it and has to stay small: this runs before the first paint.
+// The browser stores the light, dark or system colour preference.
 
 MODES := ["system", "light", "dark"]
 
@@ -17,7 +10,7 @@ MODE_KEY := "rubotty.theme.mode"
 // prefers-color-scheme block is what decides again.
 function apply(mode: string): string
   unless MODES.includes mode
-    throw new Error `Unknown theme mode: ${mode}`
+    throw new Error `Unknown colour mode: ${mode}`
 
   root := document.documentElement
   if mode is "system"

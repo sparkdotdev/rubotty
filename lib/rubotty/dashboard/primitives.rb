@@ -38,7 +38,7 @@ module Rubotty
       end
 
       # How many slices a share-of-total chart draws before the tail rolls
-      # into one. Matches RING_SLICES in assets/themes/runtime/chart.civet.
+      # into one. Matches RING_SLICES in assets/dashboard/runtime/chart.civet.
       RING_SLICES = 6
       RING_REST = "Other"
 
@@ -936,7 +936,7 @@ module Rubotty
 
         # A master-detail chrome's list pane: the current view's own
         # collection, drawn beside the nav rather than inside it, named apart
-        # from rb-shell-list, which Series A's nav group already holds. Not
+        # from rb-shell-list, which the dashboard's nav group already holds. Not
         # every theme draws one, the same latitude rb-shell-side already gets.
         LIST_PANE = %w[
           rb-shell-pane rb-shell-pane-head rb-shell-pane-title rb-shell-pane-count

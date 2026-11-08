@@ -6,7 +6,7 @@
 module Swatches
   module_function
 
-  ROOT = File.expand_path("../../assets/themes", __dir__)
+  ROOT = File.expand_path("../../assets/dashboard", __dir__)
 
   # Opaque, six digit, lower case. Every role but overlay-scrim is a colour that
   # gets composited against nothing, so alpha would make its contrast unknowable.

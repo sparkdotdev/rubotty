@@ -6,15 +6,15 @@ require "rack/test"
 require "tmpdir"
 require "fileutils"
 
-# The wiring between the compiled theme runtime and the pages that
+# The wiring between the compiled dashboard runtime and the pages that
 # carry it. The head script must be inline and above every stylesheet,
 # since stamping data-theme any later shows a frame of the wrong theme.
 # And the router's route table must name paths the internal surface answers.
-RSpec.describe "the theme runtime's wiring", :control_plane do
+RSpec.describe "the dashboard runtime wiring", :control_plane do
   include Rack::Test::Methods
 
-  RUNTIME_SOURCE = File.expand_path("../../assets/themes/runtime/index.civet", __dir__)
-  SCREENS_SOURCE = File.expand_path("../../assets/themes/runtime/screens.civet", __dir__)
+  RUNTIME_SOURCE = File.expand_path("../../assets/dashboard/runtime/index.civet", __dir__)
+  SCREENS_SOURCE = File.expand_path("../../assets/dashboard/runtime/screens.civet", __dir__)
   APP_SOURCE = File.expand_path("../../lib/rubotty/dashboard/app.rb", __dir__)
 
   # Strips // line comments before a source is scanned, so a sentence of prose
@@ -64,7 +64,7 @@ RSpec.describe "the theme runtime's wiring", :control_plane do
 
   describe "the blocking head script" do
     before do
-      File.write(File.join(assets, "theme-head.js"), head_script)
+      File.write(File.join(assets, "dashboard-head.js"), head_script)
       admin!
       get "/"
     end
@@ -87,7 +87,7 @@ RSpec.describe "the theme runtime's wiring", :control_plane do
 
     it "ships the Clay palette, and the runtime itself" do
       expect(last_response.body).to include(%(<link rel="stylesheet" data-rb-swatch="clay"))
-      expect(last_response.body).to include("/theme-runtime.js")
+      expect(last_response.body).to include("/dashboard-runtime.js")
     end
   end
 
@@ -95,7 +95,7 @@ RSpec.describe "the theme runtime's wiring", :control_plane do
   # the script editor bundle has always had. It must read as a missing asset
   # rather than as a 500.
   it "renders the page with nothing to inline when the assets were never built" do
-    expect(Rubotty::Dashboard::App.theme_head_script(assets)).to eq("")
+    expect(Rubotty::Dashboard::App.dashboard_head_script(assets)).to eq("")
 
     admin!
     get "/"
@@ -181,12 +181,12 @@ RSpec.describe "the theme runtime's wiring", :control_plane do
   # The screens: one composition of the shared emitters per section,
   # hoisted out of the four themes that each carried their own copy.
   # Held to text checks like the rest of this file; the real compile
-  # lives in themed_rendered_vocabulary_spec.rb.
+  # lives in client_rendered_vocabulary_spec.rb.
   describe "the shared screens" do
     let(:source) { File.read(SCREENS_SOURCE, encoding: "UTF-8") }
 
     let(:themed_sections) do
-      File.read(APP_SOURCE, encoding: "UTF-8").scan(/@themed_section = "([a-z_]+)"/).flatten.uniq
+      File.read(APP_SOURCE, encoding: "UTF-8").scan(/@client_section = "([a-z_]+)"/).flatten.uniq
     end
 
     let(:drawn_sections) do
@@ -217,10 +217,11 @@ RSpec.describe "the theme runtime's wiring", :control_plane do
       expect(tags).to be_empty, "hand-rolled tag(s): #{tags.join(', ')}"
     end
 
-    # What the router reads to decide whether it may take a page over, so it
-    # has to name what is really drawn rather than what was offered.
-    it "declares the sections it draws off the renderers it actually has" do
-      expect(source).to match(/sections := Object\.keys\(drawn\)\.filter/)
+    it "lets the router check the screen renderer map directly" do
+      runtime = File.read(RUNTIME_SOURCE, encoding: "UTF-8")
+
+      expect(source).to include("export { SCREENS }")
+      expect(runtime).to include("Object.prototype.hasOwnProperty.call SCREENS, section")
     end
   end
 
@@ -228,7 +229,7 @@ RSpec.describe "the theme runtime's wiring", :control_plane do
   # ways: a fallback reloading the same address forever, or a guard
   # leaving the mount empty since teardown had cleared it. The router
   # now keeps off such a section entirely, leaving the rendered page.
-  describe "a section the theme in hand does not draw" do
+  describe "a section without a client renderer" do
     let(:source) { File.read(RUNTIME_SOURCE, encoding: "UTF-8") }
 
     it "is checked before the router intercepts a click, starts, or navigates" do
@@ -236,10 +237,8 @@ RSpec.describe "the theme runtime's wiring", :control_plane do
       expect(source.scan(/draws match\.section/).length).to be >= 3
     end
 
-    it "never has the address already showing assigned back to it" do
-      screens = File.read(SCREENS_SOURCE, encoding: "UTF-8")
-
-      expect(screens).to include("unless window.location.pathname is target")
+    it "keeps the already-rendered page when startup cannot draw its section" do
+      expect(source).to match(/unless match and draws match.section\s+\/\/.*?return\s+await navigate/m)
     end
   end
 end

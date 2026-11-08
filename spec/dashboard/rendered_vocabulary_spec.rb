@@ -6,7 +6,7 @@ require "rack/test"
 
 # Theme renderers own the visible vocabulary. The server keeps each page body in
 # an unpainted staging node until a theme adopts it, so this covers the no-flash
-# boundary while themed_rendered_vocabulary_spec.rb covers the rendered sections.
+# boundary while client_rendered_vocabulary_spec.rb covers the rendered sections.
 RSpec.describe "the dashboard theme staging boundary", :control_plane do
   include Rack::Test::Methods
 
@@ -32,7 +32,7 @@ RSpec.describe "the dashboard theme staging boundary", :control_plane do
 
       expect(body).to include('<div id="rb-shell" hidden></div>')
       expect(body).to include('<div id="rb-staging" hidden>')
-      expect(body).to include("theme-boot.js")
+      expect(body).to include("dashboard-boot.js")
       expect(body).not_to include('id="rb-chrome"')
     end
   end
@@ -40,7 +40,7 @@ RSpec.describe "the dashboard theme staging boundary", :control_plane do
   it "ships the selected theme and swatch stylesheets over an inlined floor" do
     body = response_for("/")
 
-    expect(body).to include('href="/theme-series-a.css"')
+    expect(body).to include('href="/dashboard.css"')
     expect(body).to include('href="/swatch-clay.css"')
     expect(body).to include("@layer rubotty-fallback")
     expect(body).not_to include('href="/fallback.css"')

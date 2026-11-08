@@ -1,11 +1,11 @@
 // Drives the compiled boot script against the document layout.erb really
-// sends, so spec/dashboard/theme_shell_spec.rb can hold the other half of the
+// sends, so spec/dashboard/dashboard_shell_spec.rb can hold the other half of the
 // staging contract: the server body is hidden so no unthemed panel flashes,
 // and it has to come back into view when the theme it was waiting for never
 // takes it over. Hidden is how the panel avoids a flash, and it must never
 // become how the panel disappears.
 //
-// Usage: node theme_boot_checks.js <runtime.js> <boot.js> <nav.json>
+// Usage: node dashboard_boot_checks.js <runtime.js> <boot.js> <nav.json>
 // Prints a JSON array of { case, revealed, adoptedBy } to stdout, one per
 // scenario: revealed says whether #rb-staging ended up on screen, adoptedBy
 // names the slot the page was moved into, or null when nothing moved it, and a
@@ -82,7 +82,7 @@ function flashFor(box) {
   return flash;
 }
 
-function sandboxFor(page, themeName) {
+function sandboxFor(page) {
   const sandbox = {};
   sandbox.window = sandbox;
   sandbox.location = { pathname: "/", search: "", href: "" };
@@ -91,7 +91,7 @@ function sandboxFor(page, themeName) {
   sandbox.window.history = sandbox.history;
 
   const root = stubElement("html");
-  root.dataset = { rbTheme: themeName, rbBase: "", rbThemedSection: "false" };
+  root.dataset = { rbBase: "", rbClientSection: "false" };
   sandbox.document = {
     addEventListener: () => {},
     removeEventListener: () => {},
@@ -125,16 +125,16 @@ function settled() {
 
 async function runCase(sources, scenario) {
   const page = documentFor(scenario);
-  const sandbox = sandboxFor(page, scenario.theme);
+  const sandbox = sandboxFor(page);
   vm.createContext(sandbox);
   if (scenario.runtimeMissing !== true) {
-    vm.runInContext(sources.runtime, sandbox, { filename: "theme-runtime.js" });
+    vm.runInContext(sources.runtime, sandbox, { filename: "dashboard-runtime.js" });
   }
-  vm.runInContext(sources.boot, sandbox, { filename: "theme-boot.js" });
+  vm.runInContext(sources.boot, sandbox, { filename: "dashboard-boot.js" });
   await settled();
 
   const home = page.content.parentNode;
-  const slot = sandbox.rubottyTheme?.shell?.slots?.content;
+  const slot = sandbox.rubottyDashboard?.shell?.slots?.content;
   const result = {
     case: scenario.case,
     revealed: page.staging.getAttribute("hidden") === null,
@@ -148,7 +148,7 @@ async function runCase(sources, scenario) {
 async function main() {
   const [, , runtimePath, bootPath, navPath] = process.argv;
   if (!navPath) {
-    throw new Error("usage: theme_boot_checks.js <runtime.js> <boot.js> <nav.json>");
+    throw new Error("usage: dashboard_boot_checks.js <runtime.js> <boot.js> <nav.json>");
   }
   const sources = {
     runtime: fs.readFileSync(runtimePath, "utf8"),
@@ -157,18 +157,18 @@ async function main() {
   const shellJson = fs.readFileSync(navPath, "utf8");
 
   const scenarios = [
-    { case: "the theme mounts its chrome", theme: "series-a", shellJson },
+    { case: "the dashboard mounts its chrome", shellJson },
     { case: "the runtime script never arrived",
-      theme: "series-a", shellJson, runtimeMissing: true },
+      shellJson, runtimeMissing: true },
     { case: "the chrome has no mount point to draw into",
-      theme: "series-a", shellJson, shellMount: false },
+      shellJson, shellMount: false },
     { case: "the shell document on the page cannot be read",
-      theme: "series-a", shellJson: "{not json" },
+      shellJson: "{not json" },
     // A notice can begin below the fold on a narrow screen.
     { case: "a notice the layout left below the fold",
-      theme: "series-a", shellJson, flashBox: { top: 915, bottom: 956 } },
+      shellJson, flashBox: { top: 915, bottom: 956 } },
     { case: "a notice already on screen",
-      theme: "series-a", shellJson, flashBox: { top: 96, bottom: 137 } }
+      shellJson, flashBox: { top: 96, bottom: 137 } }
   ];
 
   const results = [];

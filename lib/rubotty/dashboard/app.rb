@@ -102,21 +102,21 @@ module Rubotty
       set :dashboard_env, {}
 
       # The compiled head script for a public folder, read once and kept: it is
-      # inlined into every themed page, so a per-request file read would be a
+      # inlined into every client-rendered page, so a per-request file read would be a
       # syscall on the hot path for a few hundred bytes that rarely change.
       #
       # @param public_folder [String] where npm run build put its output
       # @return [String] the script, or "" when the assets have not been built
-      def self.theme_head_script(public_folder)
-        @theme_head_scripts ||= {}
-        @theme_head_scripts[public_folder.to_s] ||= begin
-          path = File.join(public_folder.to_s, "theme-head.js")
+      def self.dashboard_head_script(public_folder)
+        @dashboard_head_scripts ||= {}
+        @dashboard_head_scripts[public_folder.to_s] ||= begin
+          path = File.join(public_folder.to_s, "dashboard-head.js")
           File.exist?(path) ? File.read(path) : ""
         end
       end
 
       # The content floor, always served, and the primitive classes underneath
-      # it, served only while no theme stylesheet is drawing them. Kept beside
+      # it, served only when the dashboard stylesheet is unavailable. Kept beside
       # the layout as CSS so a cascade check can resolve them the way a browser
       # does (see spec/support/css_cascade.rb).
       FALLBACK = "fallback.css"
@@ -129,17 +129,14 @@ module Rubotty
         @stylesheets[name] ||= File.read(File.expand_path("views/#{name}", __dir__), encoding: "UTF-8")
       end
 
-      # Whether the theme this deployment starts has a built stylesheet to
-      # draw the primitive classes with. The name being set is not enough on
-      # its own: npm run build writes this file and a deployment that never
-      # ran it would otherwise be served neither implementation.
+      # The fallback styles cover the dashboard when assets have not been built.
       #
       # @param public_folder [String] where npm run build put its output
-      def self.theme_stylesheet?(public_folder)
-        @theme_stylesheets ||= {}
+      def self.dashboard_stylesheet?(public_folder)
+        @dashboard_stylesheets ||= {}
         key = public_folder.to_s
-        @theme_stylesheets.fetch(key) do
-          @theme_stylesheets[key] = File.exist?(File.join(public_folder.to_s, "theme-series-a.css"))
+        @dashboard_stylesheets.fetch(key) do
+          @dashboard_stylesheets[key] = File.exist?(File.join(public_folder.to_s, "dashboard.css"))
         end
       end
 
@@ -213,11 +210,11 @@ module Rubotty
       end
 
       # Signed out answers 401 with a YAML body rather than the redirect above,
-      # since the caller is a fetch() inside an already-open themed page.
+      # since the caller is a fetch() inside an already-open client-rendered page.
       before "/internal/*" do
         content_type "application/yaml"
         # The licence document is open for the same reason /licence itself is,
-        # and it has to be: a themed page whose section read answers 401 falls
+        # and it has to be: a client-rendered page whose section read answers 401 falls
         # back to a full page load, which starts the runtime again and reads
         # again, so a signed-out reader would sit in a reload loop.
         next if request.path_info == "/internal/licence"
@@ -343,7 +340,7 @@ module Rubotty
         require_admin!
         @tokens = deps.web_login.active_tokens
         @wide_page = true
-        @themed_section = "operator_tokens"
+        @client_section = "operator_tokens"
         erb :operator_tokens
       end
 
@@ -372,7 +369,7 @@ module Rubotty
         @issued_auth_token = relay_flash(:auth_token)
         # Ported: the same five jobs Administrators already draws, against the
         # role that reads every community and changes nothing.
-        @themed_section = "viewers"
+        @client_section = "viewers"
         erb :viewers
       end
 
@@ -447,7 +444,7 @@ module Rubotty
 
       get "/administrators" do
         require_admin!
-        @themed_section = "administrators"
+        @client_section = "administrators"
         @baked_in_administrators = deps.dashboard_administrators.baked_in
         @granted_administrators = deps.dashboard_administrators.granted
         @administrator_adapters = ControlPlane::DashboardAdministrators::ADAPTERS
@@ -528,7 +525,7 @@ module Rubotty
         @new_adapter = nil if @new_schema.nil?
         @wide_page = true
         # Ported: the account list, its env pill, and the two-step add form.
-        @themed_section = "accounts"
+        @client_section = "accounts"
         erb :accounts
       end
 
@@ -582,7 +579,7 @@ module Rubotty
         # Asked of the server itself, so the model choice offers what is really
         # loaded rather than anything written down here.
         @openarc = openarc_model_state
-        @themed_section = "integrations"
+        @client_section = "integrations"
         erb :integrations
       end
 
@@ -692,7 +689,7 @@ module Rubotty
       # instead of needing a shell on the container at all.
       get "/settings/datastore" do
         require_admin!
-        @themed_section = "datastore"
+        @client_section = "datastore"
         erb :datastore_settings
       end
 
@@ -748,7 +745,7 @@ module Rubotty
         @wide_page = true
         # Ported: the key list, the mint form, and the one-time raw key drawn
         # through Code.
-        @themed_section = "api_keys"
+        @client_section = "api_keys"
         erb :api_keys
       end
 
@@ -820,7 +817,7 @@ module Rubotty
         @wide_page = true
         # Ported: one table of counts per community, the Onboarding count as a
         # Notice above it, and one Open per row.
-        @themed_section = "communities"
+        @client_section = "communities"
         erb :index
       end
 
@@ -837,11 +834,11 @@ module Rubotty
         @operators = operator_count(@community.id)
         @pending = deps.operators.pending(community_id: @community.id).length
         @features = models.feature_setting.where(community_id: @community.id).count
-        # Series A's only ported section so far. The request-access branch
+        # The request-access branch
         # above stays on the ERB renderer: the internal surface answers 404
         # for a community this session may not read, matching the REST API's
-        # non-disclosure rule, so it has nothing to hand a themed redraw here.
-        @themed_section = "overview"
+        # non-disclosure rule, so it has nothing to hand a client redraw here.
+        @client_section = "overview"
         erb :community
       end
 
@@ -889,7 +886,7 @@ module Rubotty
         @denied_spaces = deps.pending_spaces.denied
         # The "attach to an existing community" dropdown on each pending card.
         @attachable_communities = deps.communities
-        @themed_section = "onboarding"
+        @client_section = "onboarding"
         erb :onboarding
       end
 
@@ -968,7 +965,7 @@ module Rubotty
         # marker in the channels table below, so it is never mistaken for a
         # live, mapped one; see #discovered? and #roomed_channel_ids.
         @roomed_channel_ids = roomed_channel_ids(@community)
-        @themed_section = "platforms"
+        @client_section = "platforms"
         erb :platforms
       end
 
@@ -1173,7 +1170,7 @@ module Rubotty
       get "/communities/:slug/rooms/automatic-mapping" do
         @community = community!(params[:slug])
         authorize!(:manage_discovered, community: @community)
-        @themed_section = "automatic_mapping"
+        @client_section = "automatic_mapping"
         erb :automatic_mapping
       end
 
@@ -1200,7 +1197,7 @@ module Rubotty
       get "/communities/:slug/rooms/channels/:id" do
         @community = community!(params[:slug])
         authorize!(:view_rooms, community: @community)
-        @themed_section = "room_channel"
+        @client_section = "room_channel"
         erb :room_channel
       end
 
@@ -1249,7 +1246,7 @@ module Rubotty
       get "/communities/:slug/rooms/:room_key" do
         @community = community!(params[:slug])
         authorize!(:view_rooms, community: @community)
-        @themed_section = "room_detail"
+        @client_section = "room_detail"
         erb :room_detail
       end
 
@@ -1282,7 +1279,7 @@ module Rubotty
         # operator's approve or reject, same community scope as everything
         # else on this page.
         @suggested = models.channel.where(community_id: @community.id, suggested: true).order(:id).all
-        @themed_section = "rooms"
+        @client_section = "rooms"
         erb :rooms
       end
 
@@ -1380,10 +1377,10 @@ module Rubotty
         # themselves, because minting one is how a role is handed to a person
         # nobody has met yet.
         @auth_tokens = deps.auth_tokens.list(community_id: @community.id)
-        # Relayed rather than taken: the themed draw replaces this body, so the
+        # Relayed rather than taken: the client render replaces this body, so the
         # token has to survive one more read to reach it.
         @issued_auth_token = relay_flash(:auth_token)
-        @themed_section = "operators"
+        @client_section = "operators"
         erb :operators
       end
 
@@ -1521,10 +1518,10 @@ module Rubotty
         @feature_rows = display_feature_rows(feature_matrix_rows(@community, @scope))
         @feature_categories = group_feature_rows(@feature_rows)
         @wide_page = true
-        # Series A's third ported section. The scope selector is a GET filter
+        # The scope selector is a GET filter
         # Form, so switching scope is a real navigation the runtime's own
         # router now carries the query string through rather than dropping.
-        @themed_section = "features"
+        @client_section = "features"
         erb :features
       end
 
@@ -1596,8 +1593,7 @@ module Rubotty
 
         @config = deps.feature_controls.list(@community, selector: @scope)
                       .find { |entry| entry[:feature] == @feature }&.dig(:config) || {}
-        # Series A's fourth ported section.
-        @themed_section = "feature_config"
+        @client_section = "feature_config"
         erb :feature_config
       end
 
@@ -1641,7 +1637,7 @@ module Rubotty
         @settings = feature_rows(@community, "word_filter")
         @matrix = feature_matrix(@community, "word_filter")
         prepare_leftover_config(@community, "word_filter")
-        @themed_section = "word_filter"
+        @client_section = "word_filter"
         erb :word_filter
       end
 
@@ -1699,9 +1695,9 @@ module Rubotty
         # aggregates. Only drawn once something has been recorded.
         @script_stats = deps.script_stats.report(@community)
         @wide_page = true
-        # The staged ERB body gives the theme the server facts it needs; the
+        # The server-rendered page supplies initial content; the
         # runtime then replaces #rb-view with the shared Scripts screen.
-        @themed_section = "scripts"
+        @client_section = "scripts"
         erb :scripts
       end
 
@@ -1715,7 +1711,7 @@ module Rubotty
       # an operator to read a file they cannot open.
       get "/documentation" do
         @wide_page = true
-        @themed_section = "documentation"
+        @client_section = "documentation"
         erb :documentation
       end
 
@@ -1724,7 +1720,7 @@ module Rubotty
       # them.
       get "/licence" do
         @wide_page = true
-        @themed_section = "licence"
+        @client_section = "licence"
         erb :licence
       end
 
@@ -1733,9 +1729,9 @@ module Rubotty
         authorize!(:view_endpoints, community: @community)
         @endpoints = deps.script_endpoints.list(@community)
         @wide_page = true
-        # The staged ERB body gives the theme the server facts it needs; the
+        # The server-rendered page supplies initial content; the
         # runtime then replaces #rb-view with the shared Endpoints screen.
-        @themed_section = "endpoints"
+        @client_section = "endpoints"
         erb :endpoints
       end
 
@@ -1743,7 +1739,7 @@ module Rubotty
         @community = community!(params[:slug])
         authorize!(:view_endpoints, community: @community)
         @endpoint = nil
-        @themed_section = "endpoint_edit"
+        @client_section = "endpoint_edit"
         erb :endpoint_edit
       end
 
@@ -1751,7 +1747,7 @@ module Rubotty
         @community = community!(params[:slug])
         authorize!(:view_endpoints, community: @community)
         @endpoint = deps.script_endpoints.find(@community, params[:id]) || halt(404, erb(:not_found))
-        @themed_section = "endpoint_edit"
+        @client_section = "endpoint_edit"
         erb :endpoint_edit
       end
 
@@ -1793,7 +1789,7 @@ module Rubotty
         @script = nil
         @completions = script_completions
         @examples = script_examples
-        @themed_section = "script_edit"
+        @client_section = "script_edit"
         erb :script_edit
       end
 
@@ -1809,7 +1805,7 @@ module Rubotty
         load_script_activity
         @completions = script_completions
         @examples = script_examples
-        @themed_section = "script_edit"
+        @client_section = "script_edit"
         erb :script_edit
       end
 
@@ -1939,9 +1935,9 @@ module Rubotty
             round: deps.participation.round(community: @community, room_key: room.room_key) }
         end
         @wide_page = true
-        # The staged ERB body gives the theme the server facts it needs; the
+        # The server-rendered page supplies initial content; the
         # runtime then replaces #rb-view with the shared Room games screen.
-        @themed_section = "participation"
+        @client_section = "participation"
         erb :participation
       end
 
@@ -1977,7 +1973,7 @@ module Rubotty
         @matrix = feature_matrix(@community, "faq")
         @scopes = scope_options(@community)
         prepare_leftover_config(@community, "faq")
-        @themed_section = "faq"
+        @client_section = "faq"
         erb :faq
       end
 
@@ -2026,12 +2022,12 @@ module Rubotty
         @invites = deps.guest_invites.list(community: @community).map do |invite|
           { row: invite, state: deps.guest_invites.state_of(invite), room: models.room[invite.room_id] }
         end
-        # Relayed rather than taken outright: the themed draw replaces this
+        # Relayed rather than taken outright: the client render replaces this
         # body, so the link has to survive one more read to reach it.
         @issued_link = relay_flash(:guest_link)
         @issued_nickname = relay_flash(:guest_nickname)
         prepare_leftover_config(@community, "guest_portal")
-        @themed_section = "guests"
+        @client_section = "guests"
         erb :guests
       end
 
@@ -2105,7 +2101,7 @@ module Rubotty
         @usage_bytes = deps.rehosted_files&.sealed_bytes_for(community_id: @community.id)
         @quota_bytes = deps.rehosted_files&.policy_for(community_id: @community.id)&.dig(:quota_bytes)
         @wide_page = true
-        @themed_section = "files"
+        @client_section = "files"
         erb :files
       end
 
@@ -2139,7 +2135,7 @@ module Rubotty
         @events = deps.event_scheduling.upcoming(community: @community)
         @rooms_by_id = models.room.where(community_id: @community.id).all.to_h { |room| [room.id, room] }
         prepare_leftover_config(@community, "events")
-        @themed_section = "events"
+        @client_section = "events"
         erb :events
       end
 
@@ -2187,7 +2183,7 @@ module Rubotty
         @option_counts = @polls.to_h { |poll| [poll.id, deps.polls.options(poll).size] }
         @vote_counts = @polls.to_h { |poll| [poll.id, models.poll_vote.where(poll_id: poll.id).count] }
         prepare_leftover_config(@community, "poll")
-        @themed_section = "polls"
+        @client_section = "polls"
         erb :polls
       end
 
@@ -2218,7 +2214,7 @@ module Rubotty
         @query = presence(params[:q])
         @identities = @query ? deps.identities.search(community_id: @community.id, query: @query, limit: 25) : []
         @active_mutes = deps.moderation.active_mutes(community: @community)
-        @themed_section = "moderation"
+        @client_section = "moderation"
         erb :moderation
       end
 
@@ -2263,7 +2259,7 @@ module Rubotty
         identities = deps.identities.recent(community_id: @community.id, query: @query, limit: @cap)
         @rows = people_rows(@community, identities)
         prepare_leftover_config(@community, "nickname")
-        @themed_section = "people"
+        @client_section = "people"
         erb :people
       end
 
@@ -2296,7 +2292,7 @@ module Rubotty
         @wide_page = true
         # Ported: the window filter as TabLinks over two tables, which is what
         # nine columns of counts become inside the seven a Table draws.
-        @themed_section = "analytics_overview"
+        @client_section = "analytics_overview"
         erb :analytics_overview
       end
 
@@ -2309,7 +2305,7 @@ module Rubotty
         @windows = ControlPlane::Analytics::WINDOWS.keys
         @channel_view = ControlPlane::Analytics.channel_view_key(params[:channel_view])
         @report = deps.analytics.overview(community: @community, window: @window)
-        @themed_section = "analytics"
+        @client_section = "analytics"
         erb :analytics
       end
 
@@ -2326,7 +2322,7 @@ module Rubotty
           communities: readable_communities.map(&:slug), source: @source, action: @action, limit: 200
         )
         @wide_page = true
-        @themed_section = "audit"
+        @client_section = "audit"
         erb :audit
       end
 
@@ -2337,7 +2333,7 @@ module Rubotty
         @action = presence(params[:action])
         @events = deps.audit.query(community: @community.slug, source: @source, action: @action, limit: 200)
         @wide_page = true
-        @themed_section = "audit"
+        @client_section = "audit"
         erb :audit
       end
 
@@ -2354,7 +2350,7 @@ module Rubotty
         @wide_page = true
         # Ported: a table and a per-row Stop button, nothing this screen
         # needs beyond what Endpoints already proved out.
-        @themed_section = "redirections"
+        @client_section = "redirections"
         erb :redirections
       end
 
@@ -2384,7 +2380,7 @@ module Rubotty
         @alerts = deps.alerts.recent(community_id: @community.id)
         @unseen = @alerts.count { |row| row.seen_at.nil? }
         @wide_page = true
-        @themed_section = "alerts"
+        @client_section = "alerts"
         erb :alerts
       end
 
@@ -2417,9 +2413,9 @@ module Rubotty
         @misfire_counts = deps.content_policy_misfires.counts_by_policy(community_id: @community.id)
         @wide_page = true
         # Drawn under the moderation section rather than one of its own: every
-        # theme has a renderer for that, and a section with none behind it is a
-        # page the themed router takes over and then cannot fill.
-        @themed_section = "moderation"
+        # dashboard has a client renderer for that, and a section with none behind it is a
+        # page the dashboard router takes over and then cannot fill.
+        @client_section = "moderation"
         erb :content_policy_misfires
       end
 
@@ -2444,7 +2440,7 @@ module Rubotty
         @wide_page = true
         # Ported: two tables and a per-row retry button, same shape as
         # Redirections; subscriptions are still created over the REST API.
-        @themed_section = "webhooks"
+        @client_section = "webhooks"
         erb :webhooks
       end
 
@@ -2474,9 +2470,9 @@ module Rubotty
         @awaiting_relay = deps.backfill_proposals.awaiting_relay(community: every)
         @expired = deps.backfill_proposals.expired(community: every)
         @communities = communities_by_id(@pending + @awaiting_relay + @expired)
-        # The staged ERB body gives the theme the server facts it needs; the
+        # The server-rendered page supplies initial content; the
         # runtime then replaces #rb-view with the shared Backfill screen.
-        @themed_section = "backfill_proposals"
+        @client_section = "backfill_proposals"
         erb :backfill_proposals
       end
 
@@ -2492,7 +2488,7 @@ module Rubotty
         view = deps.debug_logs.fetch(source: @source, level: @level, limit: @limit)
         @entries = view["entries"]
         @errors = view["errors"]
-        # No @themed_section: the theme runtime has no Logs screen to swap in,
+        # No @client_section: the dashboard runtime has no Logs screen to swap in,
         # and claiming one would blank the page it is meant to replace.
         @wide_page = true
         erb :logs
@@ -2508,7 +2504,7 @@ module Rubotty
         @failures = deps.durable_jobs.recent_failures(
           since: Time.now - JobFailures.seconds_of(@window), limit: JobFailures::LIMIT
         )
-        # No @themed_section: the theme runtime has no Jobs screen to swap in,
+        # No @client_section: the dashboard runtime has no Jobs screen to swap in,
         # and claiming one would blank the page it is meant to replace.
         @wide_page = true
         erb :jobs
@@ -2549,13 +2545,13 @@ module Rubotty
         redirect to("/backfill-proposals")
       end
 
-      # The internal YAML surface a themed page reads from: session-authed
+      # The internal YAML surface a client-rendered page reads from: session-authed
       # through the same {Role} every ERB route consults, read-only (a write
       # goes through the form post beside it). See {ViewData} for why this is
       # not part of the public REST API.
 
       # The chrome around a page rather than the page itself (nav, scope
-      # switcher, breadcrumb, brand), so a theme draws the whole shell and it
+      # switcher, breadcrumb, brand), so the browser draws the shell and it
       # answers for every page, ported or not. +path+ is read for the current
       # entry but never echoed: every path in the answer is built from {Nav}.
       get "/internal/shell" do
@@ -2608,7 +2604,7 @@ module Rubotty
       end
 
       # The one-time raw key rides the relay the ERB render armed, since the
-      # themed draw replaces the body that already spent the flash itself.
+      # client render replaces the body that already spent the flash itself.
       get "/internal/api-keys" do
         internal_view do
           view_data.api_keys(
@@ -2830,7 +2826,7 @@ module Rubotty
           request.path_info.start_with?("/internal/")
         end
 
-        # The reader behind a themed section, built per request from the same
+        # The reader behind a client-rendered section, built per request from the same
         # role every ERB route authorises against.
         def view_data
           ViewData.new(deps: deps, role: current_role)
@@ -2856,16 +2852,16 @@ module Rubotty
         # Read from the built asset rather than written in Ruby, since it is
         # Civet like the rest of the runtime, and empty when npm run build has
         # not run, which is what everything else in that directory does.
-        def theme_head_script
-          App.theme_head_script(settings.public_folder)
+        def dashboard_head_script
+          App.dashboard_head_script(settings.public_folder)
         end
 
         # The floor inlined into every page: the content rules always, and the
-        # primitive classes underneath them while no theme stylesheet is
+        # primitive classes underneath them when no dashboard stylesheet is
         # drawing those. One tag rather than two, the same pair
-        # spec/support/css_cascade.rb resolves as the un-themed page.
+        # spec/support/css_cascade.rb resolves as the un-client-rendered page.
         def floor_stylesheet
-          return fallback_stylesheet if theme_drawing?
+          return fallback_stylesheet if dashboard_stylesheet?
 
           "#{fallback_stylesheet}\n#{fallback_vocabulary_stylesheet}"
         end
@@ -2874,11 +2870,9 @@ module Rubotty
 
         def fallback_vocabulary_stylesheet = App.stylesheet(App::FALLBACK_VOCABULARY)
 
-        # Whether a theme is drawing the primitive classes on this page, which
-        # is what takes the fallback's own implementation of them out of the
-        # cascade.
-        def theme_drawing?
-          App.theme_stylesheet?(settings.public_folder)
+        # Whether this deployment has the compiled dashboard stylesheet.
+        def dashboard_stylesheet?
+          App.dashboard_stylesheet?(settings.public_folder)
         end
 
         def initial_shell
@@ -3814,7 +3808,7 @@ module Rubotty
 
         # The login and operator-login pages, both unauthenticated, both a
         # short Form with no fields of their own but a hidden token in the
-        # second case. Neither draws through the theme runtime's client-side
+        # second case. Neither draws through the dashboard runtime's client-side
         # mount: that lifecycle fetches its data from /internal, which rides
         # the session these pages exist to create, and there is nothing to
         # fetch before one does.
@@ -4126,7 +4120,7 @@ module Rubotty
           value
         end
 
-        # Spends a one-time flash and re-arms it for the themed draw of the
+        # Spends a one-time flash and re-arms it for the client render of the
         # same page load, which reads the internal surface after this body has
         # already been rendered. Any later render of the page finds nothing to
         # spend and clears the relay with it, so the value still shows once.
@@ -4473,7 +4467,7 @@ module Rubotty
         # page (structured lists, dedicated actions) instead of one row per
         # config_schema key. The Features page's Config link goes there
         # instead of /features/:feature/config for exactly these; the map
-        # itself lives on Dashboard::FeatureDisplay so view_data.rb's themed
+        # itself lives on Dashboard::FeatureDisplay so view_data.rb's client
         # payload names the same set of features without a second copy.
         BESPOKE_CONFIG_PAGE = Dashboard::FeatureDisplay::BESPOKE_CONFIG_PAGE
 
@@ -4516,7 +4510,7 @@ module Rubotty
         # {#feature_summary_config_link}), then the state marker, display
         # name and description. Trusted markup rather than escaped text,
         # since a plain string could not carry the toggle's own form.
-        # Mirrors toggleSummary in assets/themes/runtime/primitives.civet.
+        # Mirrors toggleSummary in assets/dashboard/runtime/primitives.civet.
         # data-feature carries the stable feature_name to find a row by key;
         # data-feature-key adds file_rehosting's own split key too.
         def feature_row_summary(row)
@@ -4668,10 +4662,10 @@ module Rubotty
           unit == "B" ? "#{size.to_i} B" : format("%.1f %s", size, unit)
         end
 
-        # The navigation, and the pre-theme header that draws it: what the
-        # sections are lives in {Nav}, shared with /internal/shell so a theme
-        # draws the same document. Visible only while a theme boots or its
-        # assets fail to load: reaching navigation never depends on a theme.
+        # The navigation, and the fallback header that draws it: what the
+        # sections are lives in {Nav}, shared with /internal/shell so the dashboard
+        # draws the same document. Visible only while the dashboard boots or its
+        # assets fail to load: reaching navigation does not depend on browser scripts.
 
         # The page path as {Nav} writes one: the mount prefix on the front
         # (empty standalone, the dashboard's prefix when mounted under one,

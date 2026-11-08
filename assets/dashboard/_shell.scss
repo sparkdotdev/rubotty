@@ -1,12 +1,3 @@
-// Series A's chrome, over the class vocabulary Primitives::Shell::CLASSES
-// declares and ../series-a/shell.civet draws. Measured against
-// DashboardMockups/02-sidebar-saas: a 264px sticky sidebar with its own
-// scroll, a 58px topbar, a drawer over a backdrop below 900px.
-//
-// Same rule as the primitive half next door: every colour is a swatch
-// custom property, no hex, no rgb(), not even for a border nobody notices.
-// overlay-scrim is the swatch role the drawer's backdrop uses.
-
 $sidebar-width: 264px;
 $sidebar-wide-width: 280px;
 $topbar-height: 58px;

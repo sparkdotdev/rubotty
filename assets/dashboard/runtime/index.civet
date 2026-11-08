@@ -1,12 +1,4 @@
-// Dashboard lifecycle and navigation for the fixed Series A presentation.
-// Shared primitives and screen renderers remain available on rubottyTheme.
-// Mode storage also has its own small entry point for the blocking head script.
-
 import { MODES, MODE_KEY, apply, effective, opposite, restore, store, stored } from "./mode-storage.civet"
-// The Status primitive imports under an alias: this module already has a
-// module level `state` object of its own (the router's lifecycle state,
-// below), and the two would otherwise collide. Re-exported under its real
-// name at the bottom, so a theme still reaches it as rubottyTheme.state.
 import {
   escapeHtml, attributes, Format, page, section, notice, table, form, field, button, editMappingList,
   state as statusPill, tag, tags, keyValues, statRow, code, tabLinks, prose, toggleSummary
@@ -18,15 +10,13 @@ import {
   SHELL_SOURCE, SHELL_ROLES, slotIn, adopt, currentScope, otherScopes,
   scopeItems, visibleCrumbs, signedIn
 } from "./shell.civet"
-// The screen renderers, shared for the reason the emitters above are: which
-// sections a page has and what they say is not something a theme differs on.
-import { SCREENS, screens } from "./screens.civet"
-import { shell, theme } from "../series-a/index.civet"
+import { SCREENS } from "./screens.civet"
+import { shell } from "./chrome.civet"
 import { applyScriptTriggers } from "./script-triggers.civet"
 import { drawScriptRules, editScriptRules } from "./script-rules.civet"
 import { load as loadYaml } from "js-yaml"
 
-// Where a themed page reads its data. Deliberately not the public /api: that
+// Where a client-rendered page reads its data. Deliberately not the public /api: that
 // one authenticates a bearer token carrying a developer or administrator
 // scope, this one rides the operator's dashboard session and their per
 // community grants, and a single surface answering to both auth models is how
@@ -35,7 +25,7 @@ INTERNAL_PREFIX := "/internal"
 
 // The sections that have been ported, page path to data path. First match
 // wins, so the longer template comes first, and a path absent from here is
-// not a themed section: the router hands it back to the browser as an
+// not a client-rendered section: the router hands it back to the browser as an
 // ordinary link, which lets the panel stay whole while the migration works
 // through the section groups one at a time.
 ROUTES := [
@@ -97,11 +87,10 @@ state := {
   contentHome: null
   footerHome: null
   shellMounted: false
-  // The shell document currently drawn from, for a theme that needs to ask.
+  // The navigation document backing the current shell.
   nav: null
   // The view currently drawn, or null between a teardown and the next draw.
-  // The lifecycle contract is one teardown per draw, and this is what holds
-  // the runtime to it.
+  // Only a view rendered by the dashboard needs to be cleared.
   view: null
   // The last document read per section, which is what the next draw of that
   // section is compared against to work out what changed.
@@ -141,7 +130,7 @@ function fillTemplate(template: string, params: any): string
   `/${filled.join("/")}`
 
 // Which section a page path belongs to, with its params, or null for a path
-// no theme draws yet.
+// no client renderer handles.
 function resolve(path: string): any
   for route of ROUTES
     params := matchTemplate route.template, path
@@ -149,18 +138,8 @@ function resolve(path: string): any
 
   null
 
-// Whether the theme in hand draws a section, which keeps the router from
-// taking over a page nothing can then put on screen: a theme declares this
-// as +sections+ (screens() fills it in in ./screens.civet), and one that
-// declares nothing is taken at its word for every route, the behaviour
-// before the list existed. A route in the table that no screen draws is left
-// to the browser by this check, which is what lets the table carry a section
-// the internal surface answers before any screen composes it.
 function draws(section: string): boolean
-  sections := theme?.sections
-  return true unless Array.isArray sections
-
-  sections.includes section
+  Object.prototype.hasOwnProperty.call SCREENS, section
 
 // The page path, with the mount prefix taken off. The dashboard is served
 // standalone in development and under a prefix (/admin-panel) in some
@@ -175,7 +154,7 @@ function currentPath(): string
   stripBase window.location.pathname
 
 // What changed between the last draw and this one, as a list of top level
-// keys, given to draw rather than left to rescan the DOM, since a theme
+// keys, given to draw rather than left to rescan the DOM, since a renderer
 // that diffs the page on every navigation ends up doing more work than the
 // render it was trying to avoid. Compared through JSON, which is exact for
 // the plain maps, lists, strings and numbers a YAML document decodes to,
@@ -219,31 +198,24 @@ async function fetchNav(path: string): Promise<any>
 
   state.parse await response.text()
 
-// Draw the theme's chrome and move the page into it. Setting innerHTML
-// detaches whatever was adopted last time without destroying it, so the same
-// content node is put back rather than a copy of it. view rides along beside
-// nav for a chrome that projects part of the current section beside the
-// navigation rather than only inside the moved page.
-function drawShell(nav: any, view: any): void
-  shell := theme.shell
-  state.shellRoot.innerHTML = shell.chrome nav, view
+// Reattach the same content and footer after drawing fresh navigation.
+function drawShell(nav: any): void
+  state.shellRoot.innerHTML = shell.chrome nav
   adopt state.shellRoot, shell.slots.content, state.content
-  adopt state.shellRoot, shell.slots.footer ?? shell.slots.content, state.footer
-  shell.bind?({ root: state.shellRoot, nav, view, navigate, base: state.base })
+  adopt state.shellRoot, shell.slots.footer, state.footer
+  shell.bind({ root: state.shellRoot, nav, view, navigate, base: state.base })
 
 // Take the chrome over once at start. The server document remains staged until
-// the theme has drawn a shell and adopted it, so no earlier dashboard can be
-// painted between response and boot.
+// the dashboard has drawn its shell and adopted it.
 async function mountShell(): Promise<boolean>
-  return false unless theme?.shell and state.shellRoot
+  return false unless state.shellRoot
 
   try
     state.nav = await fetchNav currentPath() unless state.nav
     state.contentHome = state.content?.parentNode ?? null
     state.footerHome = state.footer?.parentNode ?? null
-    drawShell state.nav, state.view
+    drawShell state.nav
     state.shellRoot.removeAttribute "hidden"
-    document.body.setAttribute "data-rb-shell", "series-a"
     state.shellMounted = true
     true
   catch error
@@ -257,7 +229,6 @@ function unmountShell(): void
   state.footerHome?.appendChild? state.footer if state.footer
   state.shellRoot?.setAttribute? "hidden", ""
   state.shellRoot.innerHTML = "" if state.shellRoot
-  document.body.removeAttribute "data-rb-shell"
   state.shellMounted = false
 
 // Fresh chrome for the page just navigated to.
@@ -271,38 +242,33 @@ async function refreshShell(path: string): Promise<void>
     // chrome and a better one than no chrome, so a failed read leaves it.
     return
 
-  shell := theme.shell
-  // update() answers true when it has taken care of the new document. A theme
-  // without one, or one that says this document is a different shell rather
-  // than a stale one, gets the whole chrome redrawn: correct chrome after a
-  // navigation is the default rather than something each theme remembers.
-  handled := shell.update?(
+  // Redraw if the existing shell cannot show the new navigation in place.
+  handled := shell.update(
     { root: state.shellRoot, nav: state.nav, view: state.view, navigate, base: state.base }
   )
-  drawShell state.nav, state.view unless handled is true
+  drawShell state.nav unless handled is true
 
 // Undo whatever the last draw did. The view is cleared before the hook runs,
 // so a teardown that throws cannot be run twice against the same view.
 function teardown(): void
   return unless state.view
 
-  drawn := state.view
   state.view = null
-  theme.teardown drawn
+  state.root.innerHTML = "" if state.root
 
 // Go to a page path: tear the current view down, read the next one, then
 // draw it, pushing the history entry only after the read succeeds so a
 // failed navigation doesn't leave the address bar describing a page that
 // isn't on screen. A read that fails falls back to an ordinary page load
 // instead of being reported here, since the server already answers that URL
-// correctly (including bouncing an expired session to login) and a theme
+// correctly (including bouncing an expired session to login) and a
 // shell that swallowed the failure would strand
 // somebody on a broken page; only the read is guarded this way, since a
 // throwing draw would otherwise reload, start, throw and loop.
 async function navigate(path: string, options: any = {}): Promise<void>
   search := options.search ?? ""
   match := resolve path
-  // A path outside the table, or a section this theme does not draw: hand it
+  // A path outside the table, or a section the dashboard does not draw: hand it
   // back to the browser and let the server render it, rather than tearing the
   // page down for a draw that would then have nothing to put in its place.
   unless match and draws match.section
@@ -327,7 +293,7 @@ async function navigate(path: string, options: any = {}): Promise<void>
   state.lastData[match.section] = data
   state.view = drawing
   window.history.pushState { path }, "", state.base + path + search unless options.push is false
-  theme.draw drawing
+  state.root.innerHTML = SCREENS[drawing.section](drawing.data, state.base) if state.root
   // Editor rules depend on the newly drawn fields being in the document.
   drawScriptRules state.root, data
   applyScriptTriggers state.root, data
@@ -404,7 +370,7 @@ function onConfirm(event: any): void
   event.preventDefault() unless window.confirm control.getAttribute "data-confirm"
 
 // Changing a condition, or ticking a second one, redraws which boxes the
-// editor shows. Delegated like the table filter above, so a themed redraw
+// editor shows. Delegated like the table filter above, so a client redraw
 // never leaves a listener bound to an element that is no longer there.
 function onChange(event: any): void
   return unless event.target?.closest?(".rb-form")
@@ -414,17 +380,10 @@ function onChange(event: any): void
 
   applyScriptTriggers state.root, data
 
-// Load a theme into the page: init runs here, exactly once and never
-// again, since a second start is a wiring bug rather than something to
-// paper over (two inits mean two page shells and two sets of global
-// handlers). This runs on every page, ported or not, since the chrome is
-// theme-owned and a theme that only mounted on the sections it draws would
-// swap the whole shell out from under an operator following a link into an
-// ERB one; sections:false is that difference, drawing the chrome and
-// adopting the server-rendered page while leaving navigation to the
-// browser.
+// Mount the dashboard chrome on every page. Server-only pages keep their
+// content and browser navigation.
 async function start(options: any = {}): Promise<void>
-  throw new Error "The theme runtime is already started" if state.started
+  throw new Error "The dashboard is already started" if state.started
 
   state.started = true
   state.base = options.base ?? ""
@@ -437,7 +396,6 @@ async function start(options: any = {}): Promise<void>
   state.lastData = {}
 
   restore()
-  theme.init { root: state.root, base: state.base }
 
   await mountShell()
   return if options.sections is false
@@ -454,12 +412,12 @@ async function start(options: any = {}): Promise<void>
   document.addEventListener "change", state.onChange
 
   // The page the server already rendered is left exactly where it is when this
-  // theme draws no screen for its section. Handing it to the browser instead
+  // dashboard draws no screen for its section. Handing it to the browser instead
   // would load the address already showing, start again, and do it forever.
   match := resolve currentPath()
   unless match and draws match.section
     // A server-rendered editor still gets its condition behaviour: the module
-    // reads the same trigger table off the page when there is no themed
+    // reads the same trigger table off the page when there is no client
     // payload to read it from.
     applyScriptTriggers state.root, null
     return
@@ -467,8 +425,7 @@ async function start(options: any = {}): Promise<void>
   await navigate currentPath(), { push: false, search: window.location.search }
 
 // Give navigation back to the browser, tear down whatever is drawn, and return
-// the document to its staging node. Deliberately does not undo init:
-// the contract has no un-init, and whatever init built is the page mount.
+// the document to its staging node.
 function stop(): void
   return unless state.started
 
@@ -486,7 +443,7 @@ function stop(): void
   state.onChange = null
   state.started = false
 
-// What is drawn right now, for a theme that needs to ask.
+// The view currently drawn by the dashboard.
 function view(): any
   state.view
 
@@ -498,8 +455,7 @@ export {
   MODES, MODE_KEY, INTERNAL_PREFIX, ROUTES, SHELL_SOURCE, SHELL_ROLES,
   apply, effective, opposite, restore, store, stored,
   resolve, start, stop, navigate, view,
-  // The shell contract: what a theme declares to own the chrome around a
-  // page, and the helpers every theme reads one shell document with.
+  // Navigation and shell helpers.
   shell, nav, slotIn, adopt, currentScope, otherScopes, scopeItems, visibleCrumbs, signedIn,
   // The primitive emitters shared by the dashboard renderers.
   escapeHtml, attributes, Format,
@@ -507,5 +463,5 @@ export {
   code, tabLinks, prose, statusPill as state, toggleSummary,
   chart, chartRows, chartTable, CHART_SHAPES,
   // Screen renderers and their lifecycle.
-  SCREENS, screens
+  SCREENS
 }

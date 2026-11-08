@@ -11,18 +11,18 @@ RSpec.describe "retired dashboard asset cleanup" do
     Dir.mktmpdir do |dir|
       public_dir = File.join(dir, "lib/rubotty/dashboard/public")
       FileUtils.mkdir_p(File.join(public_dir, "fonts"))
-      %w[theme-code-monkey.js swatch-ruby.css chart-engine-rough-viz.js fonts/comic-neue-latin-400-normal.woff2].each do |name|
+      %w[theme-obsolete.css swatch-ruby.css chart-engine-rough-viz.js fonts/comic-neue-latin-400-normal.woff2].each do |name|
         File.write(File.join(public_dir, name), "retired")
       end
-      File.write(File.join(public_dir, "theme-series-a.css"), "active")
+      File.write(File.join(public_dir, "dashboard.css"), "active")
       File.write(File.join(public_dir, "fonts", "other.woff2"), "unrelated")
 
-      output, status = Open3.capture2e(ThemeToolchain.path("node"), script, chdir: dir)
+      output, status = Open3.capture2e(DashboardToolchain.path("node"), script, chdir: dir)
 
       expect(status.success?).to be(true), output
-      expect(Dir.children(public_dir)).to contain_exactly("theme-series-a.css", "fonts")
+      expect(Dir.children(public_dir)).to contain_exactly("dashboard.css", "fonts")
       expect(Dir.children(File.join(public_dir, "fonts"))).to eq(["other.woff2"])
-      expect(File.read(File.join(public_dir, "theme-series-a.css"))).to eq("active")
+      expect(File.read(File.join(public_dir, "dashboard.css"))).to eq("active")
     end
   end
 end

@@ -1,5 +1,5 @@
 // Drives the shell contract against a compiled theme bundle, so
-// spec/dashboard/theme_shell_spec.rb can hold the chrome a theme draws to the
+// spec/dashboard/dashboard_shell_spec.rb can hold the chrome a theme draws to the
 // same standards the content half is already held to.
 //
 // Two halves, and the split is deliberate. chrome() is a pure string emitter,
@@ -11,7 +11,7 @@
 // drawn, the page node was moved into the declared slot, and the body was
 // stamped only once both had happened.
 //
-// Usage: node theme_shell_checks.js <runtime.js> <nav.json>
+// Usage: node dashboard_shell_checks.js <runtime.js> <nav.json>
 // nav.json is a real ViewData#shell document. Prints
 // { html, checks: [{ name, ok, detail }] } to stdout.
 
@@ -20,7 +20,6 @@
 const vm = require("vm");
 const fs = require("fs");
 
-const THEME = "series-a";
 
 // The smallest thing the runtime's mount path can be driven against: it holds
 // an innerHTML string and answers querySelector by looking for the selector's
@@ -81,7 +80,7 @@ function sandboxFor(pathname) {
 function load(runtimeSrc, pathname) {
   const sandbox = sandboxFor(pathname);
   vm.createContext(sandbox);
-  vm.runInContext(runtimeSrc, sandbox, { filename: "theme-runtime.js" });
+  vm.runInContext(runtimeSrc, sandbox, { filename: "dashboard-runtime.js" });
   return sandbox;
 }
 
@@ -108,7 +107,7 @@ function checkSignedOut(checks, sandbox) {
     search: { path: "", placeholder: "" }, logout_path: "",
     brand: { product: "rubotty", version: "0.0.0-test", commit: "", drift: [] }
   };
-  const shell = sandbox.rubottyTheme.shell;
+  const shell = sandbox.rubottyDashboard.shell;
   if (!shell) return;
 
   const html = shell.chrome(nav);
@@ -119,7 +118,7 @@ function checkSignedOut(checks, sandbox) {
 }
 
 function checkChrome(checks, sandbox, nav) {
-  const shell = sandbox.rubottyTheme.shell;
+  const shell = sandbox.rubottyDashboard.shell;
   check(checks, "the theme declares a shell", !!shell);
   if (!shell) return "";
 
@@ -166,14 +165,12 @@ function checkChrome(checks, sandbox, nav) {
         !root || html.includes(`href="${root.path}">${root.label}</a>`),
         root ? `${root.label} -> ${root.path}` : "no crumb");
 
-  if (THEME === "series-a") {
-    // A disclosure that collapses what is under it and announces no state is a
-    // button a screen reader can only describe as a button.
-    const heads = html.match(/<button[^>]*data-shell-group[^>]*>/g) || [];
-    check(checks, "every nav group head is a disclosure that announces its state",
-          heads.length > 0 && heads.every((tag) => tag.includes('aria-expanded="true"')),
-          `${heads.length} head(s), ${heads.filter((tag) => !tag.includes("aria-expanded")).length} silent`);
-  }
+  // A disclosure that collapses what is under it and announces no state is a
+  // button a screen reader can only describe as a button.
+  const heads = html.match(/<button[^>]*data-shell-group[^>]*>/g) || [];
+  check(checks, "every nav group head is a disclosure that announces its state",
+        heads.length > 0 && heads.every((tag) => tag.includes('aria-expanded="true"')),
+        `${heads.length} head(s), ${heads.filter((tag) => !tag.includes("aria-expanded")).length} silent`);
 
   check(checks, "the log out control posts to the path the document names",
         html.includes(`action="${nav.logout_path}"`), nav.logout_path);
@@ -181,15 +178,9 @@ function checkChrome(checks, sandbox, nav) {
   check(checks, "the search field is pointed at the path the document names",
         html.includes(`data-shell-search-path="${nav.search.path}"`), nav.search.path);
 
-  if (THEME === "series-a") {
-    check(checks, "both scopes reach the switcher",
-          (nav.scopes || []).every((scope) => html.includes(`data-shell-scope="${scope.key}"`)),
-          (nav.scopes || []).map((scope) => scope.key).join(", "));
-  } else {
-    check(checks, "every scope is drawn in the terminal tree",
-          (nav.scopes || []).every((scope) => html.includes(`data-shell-nav="${scope.key}"`)),
-          (nav.scopes || []).map((scope) => scope.key).join(", "));
-  }
+  check(checks, "both scopes reach the switcher",
+        (nav.scopes || []).every((scope) => html.includes(`data-shell-scope="${scope.key}"`)),
+        (nav.scopes || []).map((scope) => scope.key).join(", "));
 
   check(checks, "the chrome carries no inline style at all",
         !/\sstyle="/.test(html), (html.match(/\sstyle="/g) || []).length + " found");
@@ -200,7 +191,7 @@ function checkChrome(checks, sandbox, nav) {
 
 async function checkMount(checks, runtimeSrc, nav, pathname) {
   const sandbox = load(runtimeSrc, pathname);
-  const declaredShell = sandbox.rubottyTheme.shell;
+  const declaredShell = sandbox.rubottyDashboard.shell;
   const contentSlot = declaredShell?.slots?.content || ".rb-shell-content";
   const asked = [];
   sandbox.fetch = async (url) => {
@@ -213,7 +204,7 @@ async function checkMount(checks, runtimeSrc, nav, pathname) {
   const home = stubElement("#rb-chrome");
   const content = home.appendChild(stubElement("#rb-content"));
 
-  await sandbox.rubottyTheme.start({
+  await sandbox.rubottyDashboard.start({
     base: "", root: stubElement("#rb-view"), shell: shellRoot,
     content, sections: false, parse: JSON.parse
   });
@@ -226,13 +217,9 @@ async function checkMount(checks, runtimeSrc, nav, pathname) {
         shellRoot.getAttribute("hidden") === null);
   check(checks, "the page the server rendered is MOVED into the declared slot",
         (shellRoot.slots || {})[contentSlot]?.adopted[0] === content);
-  check(checks, "the body is stamped, which is what hides the layout's own chrome",
-        sandbox.document.body.getAttribute("data-rb-shell") === THEME,
-        String(sandbox.document.body.getAttribute("data-rb-shell")));
-
-  sandbox.rubottyTheme.stop();
-  check(checks, "stopping hands the page back to the layout's own chrome",
-        content.parentNode === home && sandbox.document.body.getAttribute("data-rb-shell") === null);
+  sandbox.rubottyDashboard.stop();
+  check(checks, "stopping returns content and hides the cleared shell",
+        content.parentNode === home && shellRoot.getAttribute("hidden") === "" && shellRoot.innerHTML === "");
 }
 
 // The collapse itself has always worked. What a screen reader had no way to
@@ -245,7 +232,7 @@ function checkDisclosureState(checks, runtimeSrc, nav, pathname) {
     if (name === "click") handlers.push(handler);
   };
 
-  const shell = sandbox.rubottyTheme.shell;
+  const shell = sandbox.rubottyDashboard.shell;
   const root = stubElement("#rb-shell");
   root.innerHTML = shell.chrome(nav);
   shell.bind({ root });
@@ -306,13 +293,11 @@ async function checkFailureIsSurvivable(checks, runtimeSrc, pathname) {
   const home = stubElement("#rb-chrome");
   const content = home.appendChild(stubElement("#rb-content"));
 
-  await sandbox.rubottyTheme.start({
+  await sandbox.rubottyDashboard.start({
     base: "", root: stubElement("#rb-view"), shell: shellRoot,
     content, sections: false, parse: JSON.parse
   });
 
-  check(checks, "a shell that cannot be drawn leaves the body unstamped",
-        sandbox.document.body.getAttribute("data-rb-shell") === null);
   check(checks, "a shell that cannot be drawn leaves the page where the server put it",
         content.parentNode === home);
   check(checks, "a shell that cannot be drawn leaves its own mount hidden and empty",

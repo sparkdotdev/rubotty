@@ -90,7 +90,7 @@ module Rubotty
       # Features whose config lives on its own richer dashboard page instead
       # of the generic per-schema-field form: feature_name => the path
       # segment under a community's own slug. Shared by app.rb's ERB routes
-      # and view_data.rb's themed payload, so the Config link both surfaces
+      # and view_data.rb's client payload, so the Config link both surfaces
       # draw next to a row's toggle names the same set of features.
       BESPOKE_CONFIG_PAGE = {
         "word_filter" => "word-filter", "faq" => "faq", "events" => "events", "guest_portal" => "guests",
@@ -102,7 +102,7 @@ module Rubotty
       # then field name. Content policy's own catalog lives on
       # ContentPolicy::Service, since the four entries are that feature's own
       # content; this map is only the address book both the plain dashboard's
-      # ERB partials and view_data.rb's themed payload read to find them. A
+      # ERB partials and view_data.rb's client payload read to find them. A
       # field absent here (word_filter's own entries, everything else) draws
       # only the blank Add entry row it always has.
       FIELD_PRESETS = {

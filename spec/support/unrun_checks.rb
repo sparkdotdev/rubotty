@@ -7,7 +7,7 @@
 # verified on exactly that misreading, so this prints after the summary,
 # grouped by reason, one line per missing interpreter instead of ninety.
 # What's left is genuinely optional (Lua, zbar, tesseract, a real database,
-# live gateway credentials); the theme specs fail here instead, see theme_toolchain.rb.
+# live gateway credentials); the theme specs fail here instead, see dashboard_toolchain.rb.
 class UnrunChecks
   RSpec::Core::Formatters.register self, :example_pending, :close
 

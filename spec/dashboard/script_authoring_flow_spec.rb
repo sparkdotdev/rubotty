@@ -79,7 +79,7 @@ RSpec.describe "the script authoring flow", :control_plane do
       expect(inside).to include(%(name="trigger_also[]"))
     end
 
-    # The behaviour moved to assets/themes/runtime/script-triggers.civet, which
+    # The behaviour moved to assets/dashboard/runtime/script-triggers.civet, which
     # reads the same table off the page. What must not come back is a second
     # copy of the deciding logic written inline.
     it "carries the trigger table as data and no behaviour of its own" do

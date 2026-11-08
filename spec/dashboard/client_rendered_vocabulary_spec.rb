@@ -13,16 +13,16 @@ require "cgi"
 # all read server-rendered ERB, so hand-rolled markup is invisible to
 # them. This file closes that gap: it compiles the real Civet source
 # and runs the bundle through Node, the way a browser does.
-module ThemedRenderedVocabularySupport
+module ClientRenderedVocabularySupport
 end
 
 RSpec.describe "the themed dashboard vocabulary", :control_plane do
-  ThemedRenderedVocabularySupport::ROOT = File.expand_path("../..", __dir__)
-  ThemedRenderedVocabularySupport::SUPPORT_DIR = File.expand_path("../support", __dir__)
-  ThemedRenderedVocabularySupport::RENDER_TOOLS = %w[node civet esbuild].freeze
-  ThemedRenderedVocabularySupport::NODE_BIN = ThemeToolchain.path("node")
-  ThemedRenderedVocabularySupport::CIVET_BIN = ThemeToolchain.path("civet")
-  ThemedRenderedVocabularySupport::ESBUILD_BIN = ThemeToolchain.path("esbuild")
+  ClientRenderedVocabularySupport::ROOT = File.expand_path("../..", __dir__)
+  ClientRenderedVocabularySupport::SUPPORT_DIR = File.expand_path("../support", __dir__)
+  ClientRenderedVocabularySupport::RENDER_TOOLS = %w[node civet esbuild].freeze
+  ClientRenderedVocabularySupport::NODE_BIN = DashboardToolchain.path("node")
+  ClientRenderedVocabularySupport::CIVET_BIN = DashboardToolchain.path("civet")
+  ClientRenderedVocabularySupport::ESBUILD_BIN = DashboardToolchain.path("esbuild")
 
   def run!(*cmd)
     out, status = Open3.capture2e(*cmd)
@@ -31,29 +31,27 @@ RSpec.describe "the themed dashboard vocabulary", :control_plane do
     out
   end
 
-  # Compiles the runtime and every theme's own Civet fresh into a private directory on
-  # every run (the same steps package.json's build:civet/build:theme-runtime scripts
+  # Compiles the dashboard runtime fresh into a private directory on
+  # every run (the same steps package.json's build:civet/build:dashboard-runtime scripts
   # run) rather than trusting whatever is or isn't sitting in the gitignored
   # lib/rubotty/dashboard/public, so a regression in the source is caught rather than
   # checked against yesterday's build. Must live under the project's own tmp/, not a
   # system temp directory: esbuild resolves a bare import like js-yaml by walking up
   # from the importing file looking for node_modules, and a system temp directory has
   # none of this project's above it to find.
-  def compile_theme_bundles
-    FileUtils.mkdir_p(File.join(ThemedRenderedVocabularySupport::ROOT, "tmp"))
-    dir = Dir.mktmpdir("theme-spec", File.join(ThemedRenderedVocabularySupport::ROOT, "tmp"))
-    %w[runtime series-a].each do |part|
-      output = File.join(dir, part)
-      FileUtils.mkdir_p(output)
-      run!(ThemedRenderedVocabularySupport::CIVET_BIN, "--js", "-c",
-           *Dir.glob(File.join(ThemedRenderedVocabularySupport::ROOT, "assets/themes/#{part}/*.civet")),
-           "-o", "#{output}/.js")
-    end
-    runtime_js = File.join(dir, "theme-runtime.js")
-    run!(ThemedRenderedVocabularySupport::ESBUILD_BIN, File.join(dir, "runtime", "index.js"), "--bundle", "--format=iife",
-         "--global-name=rubottyTheme", "--outfile=#{runtime_js}")
+  def compile_dashboard_bundles
+    FileUtils.mkdir_p(File.join(ClientRenderedVocabularySupport::ROOT, "tmp"))
+    dir = Dir.mktmpdir("theme-spec", File.join(ClientRenderedVocabularySupport::ROOT, "tmp"))
+    output = File.join(dir, "runtime")
+    FileUtils.mkdir_p(output)
+    run!(ClientRenderedVocabularySupport::CIVET_BIN, "--js", "-c",
+         *Dir.glob(File.join(ClientRenderedVocabularySupport::ROOT, "assets/dashboard/runtime/*.civet")),
+         "-o", "#{output}/.js")
+    runtime_js = File.join(dir, "dashboard-runtime.js")
+    run!(ClientRenderedVocabularySupport::ESBUILD_BIN, File.join(dir, "runtime", "index.js"), "--bundle", "--format=iife",
+         "--global-name=rubottyDashboard", "--outfile=#{runtime_js}")
     hydration_js = File.join(dir, "chart-engine.js")
-    run!(ThemedRenderedVocabularySupport::ESBUILD_BIN, File.join(dir, "runtime", "chart-boot.js"), "--bundle", "--format=iife",
+    run!(ClientRenderedVocabularySupport::ESBUILD_BIN, File.join(dir, "runtime", "chart-boot.js"), "--bundle", "--format=iife",
          "--outfile=#{hydration_js}")
     { dir: dir, runtime: runtime_js, hydration: hydration_js }
   end
@@ -62,7 +60,7 @@ RSpec.describe "the themed dashboard vocabulary", :control_plane do
   # block rather than any primitive drawing them: the same reason
   # the documents use Lua, YAML, shell and contribution-template examples.
   # No other emitter can produce one, and the scan refuses any other class.
-  ThemedRenderedVocabularySupport::THEMED_DOCUMENT_CLASSES = %w[
+  ClientRenderedVocabularySupport::THEMED_DOCUMENT_CLASSES = %w[
     language-lua language-yaml language-sh language-markdown
   ].freeze
 
@@ -74,17 +72,17 @@ RSpec.describe "the themed dashboard vocabulary", :control_plane do
 
   def ungated_buttons(html) = button_tags(html).reject { |tag| tag.include?("data-grant") }
 
-  if ThemeToolchain.ready?(ThemedRenderedVocabularySupport::RENDER_TOOLS)
+  if DashboardToolchain.ready?(ClientRenderedVocabularySupport::RENDER_TOOLS)
     describe "driven through Node, the real compiled output" do
       before { install_dashboard_guide_fixture }
       after { remove_dashboard_guide_fixtures }
 
-      before(:context) { @build = compile_theme_bundles }
+      before(:context) { @build = compile_dashboard_bundles }
       after(:context) { FileUtils.remove_entry(@build[:dir], true) }
 
       let(:seeded) { seeded_sample }
       let(:db) { seeded[0] }
-      let(:file_store_root) { Dir.mktmpdir("theme-spec-files", File.join(ThemedRenderedVocabularySupport::ROOT, "tmp")) }
+      let(:file_store_root) { Dir.mktmpdir("theme-spec-files", File.join(ClientRenderedVocabularySupport::ROOT, "tmp")) }
       let(:deps) do
         Rubotty::Dashboard::Deps.new(db: db, logger: Rubotty::Log.null, file_store_path: file_store_root)
       end
@@ -382,12 +380,12 @@ RSpec.describe "the themed dashboard vocabulary", :control_plane do
 
       def rendered
         @rendered ||= JSON.parse(
-          run!(ThemedRenderedVocabularySupport::NODE_BIN, File.join(ThemedRenderedVocabularySupport::SUPPORT_DIR, "theme_render_harness.js"),
+          run!(ClientRenderedVocabularySupport::NODE_BIN, File.join(ClientRenderedVocabularySupport::SUPPORT_DIR, "dashboard_render_harness.js"),
                @build[:runtime], cases_file)
         )
       end
 
-      ThemedRenderedVocabularySupport::TABLE_SECTIONS = %w[
+      ClientRenderedVocabularySupport::TABLE_SECTIONS = %w[
         endpoints scripts redirections webhooks features participation alerts files operator_tokens audit
         communities analytics_overview accounts api_keys
       ].freeze
@@ -398,8 +396,8 @@ RSpec.describe "the themed dashboard vocabulary", :control_plane do
       # it, which is what the screens no theme could draw needed and did not
       # have.
       def themed_sections
-        source = File.read(File.join(ThemedRenderedVocabularySupport::ROOT, "lib/rubotty/dashboard/app.rb"), encoding: "UTF-8")
-        source.scan(/@themed_section\s*=\s*"([a-z_]+)"/).flatten.uniq.sort
+        source = File.read(File.join(ClientRenderedVocabularySupport::ROOT, "lib/rubotty/dashboard/app.rb"), encoding: "UTF-8")
+        source.scan(/@client_section\s*=\s*"([a-z_]+)"/).flatten.uniq.sort
       end
 
       it "drives a real render for every ported screen, so nothing here passes vacuously" do
@@ -417,8 +415,8 @@ RSpec.describe "the themed dashboard vocabulary", :control_plane do
       end
 
       it "uses the wide Page variant for every primary table screen" do
-        table_screens = rendered.select { |screen| ThemedRenderedVocabularySupport::TABLE_SECTIONS.include?(screen["section"]) }
-        expected = cases.select { |entry| ThemedRenderedVocabularySupport::TABLE_SECTIONS.include?(entry[:expected_section]) }
+        table_screens = rendered.select { |screen| ClientRenderedVocabularySupport::TABLE_SECTIONS.include?(screen["section"]) }
+        expected = cases.select { |entry| ClientRenderedVocabularySupport::TABLE_SECTIONS.include?(entry[:expected_section]) }
                         .map { |entry| entry[:expected_section] }
         expect(table_screens.map { |screen| screen["section"] }).to match_array(expected)
         expect(table_screens.map { |screen| screen["html"] }).to all(include("rb-page--wide"))
@@ -433,7 +431,7 @@ RSpec.describe "the themed dashboard vocabulary", :control_plane do
 
       it "emits nothing outside the primitive class vocabulary, unlike the ERB layer it draws over" do
         bespoke = rendered.flat_map { |r| classes_in(r["html"]) }.uniq -
-                  Rubotty::Dashboard::Primitives::CLASSES - ThemedRenderedVocabularySupport::THEMED_DOCUMENT_CLASSES
+                  Rubotty::Dashboard::Primitives::CLASSES - ClientRenderedVocabularySupport::THEMED_DOCUMENT_CLASSES
 
         expect(bespoke).to be_empty, "class(es) outside Primitives::CLASSES: #{bespoke.join(', ')}"
       end
@@ -604,7 +602,7 @@ RSpec.describe "the themed dashboard vocabulary", :control_plane do
       # Every category and its members, mirroring features_matrix_spec.rb's
       # own list so the plain and themed surfaces are checked against the
       # identical shape, each already written in alphabetical order.
-      ThemedRenderedVocabularySupport::CATEGORY_MEMBERS = {
+      ClientRenderedVocabularySupport::CATEGORY_MEMBERS = {
         "Bridging and Delivery" => ["Channel Management", "File Rehosting", "File Uploads", "Message Backfill",
                                      "Message Bridge", "Message Redirection"],
         "Community Tools" => ["Events & Scheduling", "FAQ Responses", "Keyword Watches", "Polls",
@@ -629,7 +627,7 @@ RSpec.describe "the themed dashboard vocabulary", :control_plane do
         listed = features_html.scan(%r{<span data-feature-heading><strong>([^<]+)</strong>})
                               .flatten.map { |label| CGI.unescape_html(label) }
 
-        expect(listed.size).to eq(ThemedRenderedVocabularySupport::CATEGORY_MEMBERS.values.flatten.size)
+        expect(listed.size).to eq(ClientRenderedVocabularySupport::CATEGORY_MEMBERS.values.flatten.size)
       end
 
       describe "category grouping" do
@@ -637,11 +635,11 @@ RSpec.describe "the themed dashboard vocabulary", :control_plane do
         # (data-chevron="start"), which a single feature row never does; the
         # page's own "About scopes and defaults" disclosure carries it too,
         # so only a block whose title is a real category counts.
-        ThemedRenderedVocabularySupport::CATEGORY_OPEN = '<details class="rb-section rb-section--collapsible" data-chevron="start">'
+        ClientRenderedVocabularySupport::CATEGORY_OPEN = '<details class="rb-section rb-section--collapsible" data-chevron="start">'
 
         def category_blocks(html)
-          html.split(/(?=#{Regexp.escape(ThemedRenderedVocabularySupport::CATEGORY_OPEN)})/)
-              .select { |chunk| chunk.start_with?(ThemedRenderedVocabularySupport::CATEGORY_OPEN) && ThemedRenderedVocabularySupport::CATEGORY_MEMBERS.key?(chunk[/rb-section-title">([^<]+)<\/summary>/, 1]) }
+          html.split(/(?=#{Regexp.escape(ClientRenderedVocabularySupport::CATEGORY_OPEN)})/)
+              .select { |chunk| chunk.start_with?(ClientRenderedVocabularySupport::CATEGORY_OPEN) && ClientRenderedVocabularySupport::CATEGORY_MEMBERS.key?(chunk[/rb-section-title">([^<]+)<\/summary>/, 1]) }
         end
 
         def category_block(html, title)
@@ -652,13 +650,13 @@ RSpec.describe "the themed dashboard vocabulary", :control_plane do
           features_html = rendered.find { |r| r["section"] == "features" }.fetch("html")
           titles = category_blocks(features_html).map { |block| block[/rb-section-title">([^<]+)<\/summary>/, 1] }
 
-          expect(titles).to eq(ThemedRenderedVocabularySupport::CATEGORY_MEMBERS.keys)
+          expect(titles).to eq(ClientRenderedVocabularySupport::CATEGORY_MEMBERS.keys)
         end
 
         it "puts every feature into its own category, alphabetised inside it" do
           features_html = rendered.find { |r| r["section"] == "features" }.fetch("html")
 
-          ThemedRenderedVocabularySupport::CATEGORY_MEMBERS.each do |title, members|
+          ClientRenderedVocabularySupport::CATEGORY_MEMBERS.each do |title, members|
             block = category_block(features_html, title)
             names = block.scan(%r{<span data-feature-heading><strong>([^<]+)</strong>})
                          .flatten.map { |label| CGI.unescape_html(label) }
@@ -1270,7 +1268,7 @@ RSpec.describe "the themed dashboard vocabulary", :control_plane do
     end
 
     describe "the shared emitters' own contract" do
-      before(:context) { @build = compile_theme_bundles }
+      before(:context) { @build = compile_dashboard_bundles }
       after(:context) { FileUtils.remove_entry(@build[:dir], true) }
 
       # The name a Ruby helper goes by on the client, derived from the helper
@@ -1280,7 +1278,7 @@ RSpec.describe "the themed dashboard vocabulary", :control_plane do
 
       def report
         @report ||= begin
-          out = run!(ThemedRenderedVocabularySupport::NODE_BIN, File.join(ThemedRenderedVocabularySupport::SUPPORT_DIR, "theme_primitive_checks.js"),
+          out = run!(ClientRenderedVocabularySupport::NODE_BIN, File.join(ClientRenderedVocabularySupport::SUPPORT_DIR, "dashboard_primitive_checks.js"),
                      @build[:runtime])
           JSON.parse(out)
         end
@@ -1297,8 +1295,8 @@ RSpec.describe "the themed dashboard vocabulary", :control_plane do
         end
         path = File.join(@build[:dir], "chart-hydration.json")
         File.write(path, JSON.generate(cases))
-        output = run!(ThemedRenderedVocabularySupport::NODE_BIN,
-                      File.join(ThemedRenderedVocabularySupport::SUPPORT_DIR, "chart_hydration_checks.js"),
+        output = run!(ClientRenderedVocabularySupport::NODE_BIN,
+                      File.join(ClientRenderedVocabularySupport::SUPPORT_DIR, "chart_hydration_checks.js"),
                       @build[:hydration], path)
         hydrated = JSON.parse(output)
 
@@ -1356,7 +1354,7 @@ RSpec.describe "the themed dashboard vocabulary", :control_plane do
     end
   else
     it "has no toolchain installed to render the themes with" do
-      ThemeToolchain.report_gap!(self, ThemedRenderedVocabularySupport::RENDER_TOOLS, "the themed render checks")
+      DashboardToolchain.report_gap!(self, ClientRenderedVocabularySupport::RENDER_TOOLS, "the themed render checks")
     end
   end
 end

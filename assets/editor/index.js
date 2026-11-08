@@ -11,7 +11,7 @@ import { EditorState } from "@codemirror/state";
 import { autocompletion } from "@codemirror/autocomplete";
 import { StreamLanguage } from "@codemirror/language";
 import { moonscript } from "./moonscript.js";
-import { rubottyHighlight, rubottyTheme } from "./theme.js";
+import { rubottyHighlight, editorStyle } from "./style.js";
 // CodeMirror 6 ships no first-party Lua package. The maintained route is the
 // legacy-modes bundle, which carries the CodeMirror 5 Lua mode wrapped for 6.
 import { lua } from "@codemirror/legacy-modes/mode/lua";
@@ -80,7 +80,7 @@ function upgrade(textarea) {
       doc: textarea.value,
       extensions: [
         basicSetup,
-        rubottyTheme,
+        editorStyle,
         rubottyHighlight,
         languageFor(textarea),
         autocompletion({ override: [completionsFrom(textarea)] }),
@@ -169,7 +169,7 @@ function upgradeSnippets() {
     var mode = MODES[node.dataset.code];
     var text = node.textContent.replace(/\s+$/, "");
     var extensions = [
-      rubottyTheme,
+      editorStyle,
       rubottyHighlight,
       EditorView.editable.of(false),
       EditorState.readOnly.of(true),

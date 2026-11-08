@@ -1,7 +1,0 @@
-// The dashboard uses one presentation: Series A over the shared screen renderers.
-import { screens } from "../runtime/screens.civet"
-import { shell } from "./shell.civet"
-
-theme := { ...screens(), shell }
-
-export { shell, theme }

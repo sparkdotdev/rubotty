@@ -3,15 +3,12 @@
 const fs = require("fs");
 const path = require("path");
 const publicDir = path.join(process.cwd(), "lib/rubotty/dashboard/public");
-const retired = [
-  "theme-series-a.js",
-  "theme-code-monkey.js", "theme-code-monkey.css",
-  "theme-command-centre.js", "theme-command-centre.css",
-  "theme-poorly-drawn-scribbles.js", "theme-poorly-drawn-scribbles.css",
-  "swatch-ruby.css", "swatch-forest.css", "swatch-harbour.css",
-  "chart-engine-in-house.js", "chart-engine-rough-viz.js", "rough-viz.min.js"
-];
-for (const name of retired) fs.rmSync(path.join(publicDir, name), { force: true });
+const retired = /^(?:theme-.+\.(?:js|css)|swatch-(?:ruby|forest|harbour)\.css|chart-engine-.+\.js|rough-viz\.min\.js)$/;
+if (fs.existsSync(publicDir)) {
+  for (const entry of fs.readdirSync(publicDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() && retired.test(entry.name)) fs.rmSync(path.join(publicDir, entry.name), { force: true });
+  }
+}
 const fontDir = path.join(publicDir, "fonts");
 for (const name of ["comic-neue-latin-400-normal.woff2", "comic-neue-latin-700-normal.woff2", "OFL.txt"]) {
   fs.rmSync(path.join(fontDir, name), { force: true });

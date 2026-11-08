@@ -1,39 +1,32 @@
 <!DOCTYPE html>
-<html lang="en" data-rb-theme="series-a" data-rb-base="<%= h(request.script_name) %>"
-      data-rb-themed-section="<%= @themed_section ? "true" : "false" %>">
+<html lang="en" data-rb-base="<%= h(request.script_name) %>"
+      data-rb-client-section="<%= @client_section ? "true" : "false" %>">
 <head>
   <meta charset="utf-8">
-  <%# First thing in the document, above every stylesheet: see App#theme_head_script. %>
-  <script><%= theme_head_script %></script>
+  <%# First thing in the document, above every stylesheet: see App#dashboard_head_script. %>
+  <script><%= dashboard_head_script %></script>
   <link rel="stylesheet" data-rb-swatch="clay" href="<%= request.script_name %>/swatch-clay.css">
-  <script src="<%= request.script_name %>/theme-runtime.js" defer></script>
-  <script src="<%= request.script_name %>/theme-boot.js" defer></script>
+  <script src="<%= request.script_name %>/dashboard-runtime.js" defer></script>
+  <script src="<%= request.script_name %>/dashboard-boot.js" defer></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>rubotty <%= Rubotty::VERSION %> web admin</title>
-  <%# The floor under the theme. It draws content and no chrome, and the body
-      it paints stays staged out of sight until a theme reveals it, so there
-      is nothing here to flash. See App#floor_stylesheet for which half of it
-      a page gets. %>
+  <%# The fallback styles cover pages before the dashboard starts or when assets are unavailable. %>
   <style><%= floor_stylesheet %></style>
   <%# Unlayered, and the floor above sits in a cascade layer, so a property
       this stylesheet declares wins over the floor's whatever the two
       selectors weigh. %>
-  <link rel="stylesheet" href="<%= request.script_name %>/theme-series-a.css">
+  <link rel="stylesheet" href="<%= request.script_name %>/dashboard.css">
   <%# Hydrates server-rendered charts using the same standard renderer as client navigation. %>
   <script defer src="<%= request.script_name %>/chart-engine.js"></script>
 </head>
 <body>
-  <%# Where the required theme draws the whole chrome: sidebar, topbar, rail,
-      window frame, whatever that theme's shell is. %>
   <div id="rb-shell" hidden></div>
-  <%# The server body is a hidden staging node, never a legacy dashboard. The
-      theme moves its content and footer into theme-owned slots before showing
-      them, so no unthemed frame can flash during a page load. %>
+  <%# Startup moves the server-rendered content and footer into the shell. %>
   <div id="rb-staging" hidden>
     <div id="rb-content"<%= @wide_page ? ' class="wide"' : "" %>>
       <% if (notice = take_flash(:notice)) %><div class="flash notice"><%= h(notice) %></div><% end %>
       <% if (error = take_flash(:error)) %><div class="flash error"><%= h(error) %></div><% end %>
-      <%# A themed section's draw() replaces only this element, so a flash
+      <%# A client-rendered section's draw() replaces only this element, so a flash
           above survives a redraw instead of being wiped with the ERB body. %>
       <div id="rb-view"><%= yield %></div>
     </div>
@@ -43,10 +36,7 @@
     </footer>
   </div>
   <script id="rb-shell-data" type="application/json"><%= initial_shell_json %></script>
-  <%# The last resort, inline because it has to survive the theme's own
-      scripts never arriving: theme-boot.js reveals a page no theme took over
-      as soon as it knows, and a page still staged once the document has
-      finished loading was never reached by that at all. %>
+  <%# Show the server-rendered page if the dashboard scripts never load. %>
   <script>
     addEventListener("load", function () {
       var staging = document.getElementById("rb-staging");

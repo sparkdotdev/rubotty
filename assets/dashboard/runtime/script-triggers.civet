@@ -60,7 +60,7 @@ function triggerSummary(picked: any[]): string
   calls := handed.map((name: string) => `rubotty.${name}()`).join ", "
   `${said} Your script can read: ${calls}`.trim()
 
-// The trigger table, from the themed payload where there is one and from the
+// The trigger table, from the client payload where there is one and from the
 // server-rendered page's own copy of it otherwise. The two are the same list:
 // ViewData#trigger_catalogue and the editor's trigger-help block are both read
 // off Scripting::Triggers::TYPES.
@@ -76,7 +76,7 @@ function catalogueFor(root: any, data: any): any[]
     []
 
 // Draw the condition step for whatever is chosen right now. Called after every
-// themed draw and again on every change inside the editor, the same way charts
+// client render and again on every change inside the editor, the same way charts
 // are painted after a draw rather than during one.
 function applyScriptTriggers(root: any, data: any): void
   return unless root

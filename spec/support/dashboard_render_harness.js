@@ -1,13 +1,13 @@
 // Drives a compiled theme bundle exactly the way a browser does, so
-// spec/dashboard/themed_rendered_vocabulary_spec.rb can hold the Civet
+// spec/dashboard/client_rendered_vocabulary_spec.rb can hold the Civet
 // rendered DOM to the same invariants rendered_vocabulary_spec.rb holds the
 // server rendered ERB to. Node executes the real compiled output (the same
 // files `npm run build` produces, compiled fresh into a temp directory by
 // the spec so this never depends on a prior build step); nothing here is a
 // simulation of what the runtime does, it is the runtime.
 //
-// Usage: node theme_render_harness.js <runtime.js> <cases.json>
-// The runtime contains the fixed Series A presentation.
+// Usage: node dashboard_render_harness.js <runtime.js> <cases.json>
+// The runtime contains the fixed the dashboard presentation.
 //
 // cases.json: [{ "path": "/communities/sample", "search": "?scope=all",
 //   "dataPath": "/internal/communities/sample", "data": {...} }, ...]
@@ -81,7 +81,7 @@ function sandboxFor(pathname, search) {
 async function renderCase(runtimeSrc, testCase) {
   const sandbox = sandboxFor(testCase.path, testCase.search);
   vm.createContext(sandbox);
-  vm.runInContext(runtimeSrc, sandbox, { filename: "theme-runtime.js" });
+  vm.runInContext(runtimeSrc, sandbox, { filename: "dashboard-runtime.js" });
   // navigate() falls back to an ordinary page load when a read throws, which
   // is the same observable outcome as a theme handing a section it does not
   // draw back to the server. Keeping the mock's own complaint here means a
@@ -110,10 +110,10 @@ async function renderCase(runtimeSrc, testCase) {
   };
 
   const mount = { innerHTML: "" };
-  await sandbox.rubottyTheme.start({ base: "", root: mount, parse: JSON.parse });
+  await sandbox.rubottyDashboard.start({ base: "", root: mount, parse: JSON.parse });
   if (fetchError) throw fetchError;
 
-  const view = sandbox.rubottyTheme.view();
+  const view = sandbox.rubottyDashboard.view();
   return {
     path: testCase.path,
     section: view ? view.section : null,
@@ -125,7 +125,7 @@ async function renderCase(runtimeSrc, testCase) {
 async function main() {
   const [, , runtimePath, casesPath] = process.argv;
   if (!casesPath) {
-    throw new Error("usage: theme_render_harness.js <runtime.js> <cases.json>");
+    throw new Error("usage: dashboard_render_harness.js <runtime.js> <cases.json>");
   }
   const runtimeSrc = fs.readFileSync(runtimePath, "utf8");
   const cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));

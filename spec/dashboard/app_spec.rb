@@ -248,7 +248,7 @@ RSpec.describe Rubotty::Dashboard::App, :control_plane do
     end
 
     # The order is Nav::COMMUNITY_GROUPS' own, since every theme renders that
-    # catalogue rather than a list of its own. Same document Series A's
+    # catalogue rather than a list of its own. Same document the dashboard's
     # sidebar draws from, so the two can never disagree about what a community
     # has in it.
     it "lists the sub-navigation entries grouped, Overview first" do

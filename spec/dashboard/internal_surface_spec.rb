@@ -80,13 +80,13 @@ RSpec.describe "the dashboard's internal YAML surface", :control_plane do
       expect(body["section"]).to eq("rooms")
     end
 
-    it "starts Series A on the ordinary page" do
+    it "starts the dashboard on the ordinary page" do
       admin!
       get "/"
 
       expect(last_response.status).to eq(200)
       expect(last_response.body).to include("swatch-clay.css")
-      expect(last_response.body).to include("theme-runtime.js")
+      expect(last_response.body).to include("dashboard-runtime.js")
     end
   end
 

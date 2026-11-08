@@ -1,10 +1,4 @@
-// The entry point for a page that is still ERB. Those pages get the figure
-// from Primitives::Identity#chart, which leaves it empty and hangs the data off
-// it, so something has to draw into it once the document is up. On a themed
-// page nothing here runs: the theme calls the emitter and gets the whole figure
-// back already drawn.
-//
-// The server and client paths use the same standard SVG renderer.
+// Fill charts in server-rendered pages with the same SVG renderer as client navigation.
 
 import { chart } from "./chart.civet"
 

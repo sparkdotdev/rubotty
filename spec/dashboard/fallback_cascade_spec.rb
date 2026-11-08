@@ -12,12 +12,12 @@ require "set"
 # active, held over every theme at once. Checking a theme's compiled
 # stylesheet alone misses a property the fallback above it already won,
 # so these resolve the pair, in serve order, as a browser would.
-RSpec.describe "the fallback stylesheet under a theme" do
+RSpec.describe "the dashboard fallback stylesheet" do
   FALLBACK_ROOT = File.expand_path("../..", __dir__)
   FALLBACK_SASS = File.join(FALLBACK_ROOT, "node_modules", ".bin", "sass")
 
   # The primitive elements a screen is built out of, each as the chain the
-  # shared emitters really draw (see assets/themes/runtime/primitives.civet and
+  # shared emitters really draw (see assets/dashboard/runtime/primitives.civet and
   # lib/rubotty/dashboard/primitives.rb).
   FALLBACK_PAGE = [CssCascade.node("div", "rb-page", "rb-page--default")].freeze
   FALLBACK_BODY = (FALLBACK_PAGE + [CssCascade.node("div", "rb-page-body")]).freeze
@@ -80,9 +80,10 @@ RSpec.describe "the fallback stylesheet under a theme" do
     before(:context) do
       FileUtils.mkdir_p(File.join(FALLBACK_ROOT, "tmp"))
       @dir = Dir.mktmpdir("fallback-spec", File.join(FALLBACK_ROOT, "tmp"))
-      @sheets = Themes.names.to_h { |name| [name, compile(Themes.stylesheet(name))] }
-      # The default swatch, which is where a theme's --rb-* roles come from.
-      @swatch = compile(File.join(Themes::ROOT, "swatches", "swatch-clay.scss"))
+      assets = File.join(FALLBACK_ROOT, "assets/dashboard")
+      @dashboard_css = compile(File.join(assets, "style.scss"))
+      @combined_css = CssCascade.dashboard(@dashboard_css)
+      @swatch = compile(File.join(assets, "swatches", "swatch-clay.scss"))
     end
 
     after(:context) { FileUtils.remove_entry(@dir, true) }
@@ -90,7 +91,7 @@ RSpec.describe "the fallback stylesheet under a theme" do
     def compile(source)
       out = File.join(@dir, "#{File.basename(source, '.scss')}.css")
       result, status = Open3.capture2e(FALLBACK_SASS, "--no-source-map", "--style=expanded",
-                                       "--load-path=#{Themes::ROOT}", source, out)
+                                       "--load-path=#{File.join(FALLBACK_ROOT, "assets/dashboard")}", source, out)
       raise "compiling #{source} failed:\n#{result}" unless status.success?
 
       File.read(out, encoding: "UTF-8")
@@ -103,125 +104,78 @@ RSpec.describe "the fallback stylesheet under a theme" do
                 .any? { |one| one.selector == rule.selector && one.value == rule.value }
     end
 
-    def decided_by_fallback(theme_css, property, chain)
-      winner = CssCascade.candidates(CssCascade.themed(theme_css), property, chain)
+    def decided_by_fallback(property, chain)
+      winner = CssCascade.candidates(@combined_css, property, chain)
                          .max_by { |rule| CssCascade.priority(rule) }
       winner if winner && from_fallback?(winner, property)
     end
 
-    def definitions_for(theme_css)
+    def definitions
       CssColour.definitions(@swatch)
                .merge(CssColour.definitions(CssCascade.fallback))
-               .merge(CssColour.definitions(theme_css))
+               .merge(CssColour.definitions(@dashboard_css))
     end
 
-    it "compiles a stylesheet for every theme, so nothing below passes on an empty set" do
-      expect(@sheets.keys).to eq(Themes.names)
-      expect(@sheets.values).to all(include(".rb-table"))
+    it "compiles the dashboard styles and palette" do
+      expect(@dashboard_css).to include(".rb-table")
       expect(@swatch).to include("--rb-surface")
     end
 
-    it "reads the first selector of a compiled stylesheet, which a byte order mark otherwise eats" do
-      expect(CssCascade.rules(@sheets.fetch(Themes.names.first), "display")).not_to be_empty
-      expect(CssCascade.rules(@sheets.fetch(Themes.names.first), "display").map(&:selector))
-        .to all(satisfy { |selector| !selector.start_with?("﻿") })
+    it "reads the first selector without a byte order mark" do
+      rules = CssCascade.rules(@dashboard_css, "display")
+
+      expect(rules).not_to be_empty
+      expect(rules.map(&:selector)).to all(satisfy { |selector| !selector.start_with?("\uFEFF") })
     end
 
-    # The headline. A theme's exposure was the set of properties it forgot to
-    # restate, which is not a thing anyone can hold in their head, so this
-    # holds the whole vocabulary at once instead of one property at a time.
-    it "decides nothing a theme draws, on any primitive, on any theme" do
-      offenders = @sheets.flat_map do |name, css|
-        FALLBACK_ELEMENTS.flat_map do |label, chain|
-          FALLBACK_PROPERTIES.filter_map do |property|
-            rule = decided_by_fallback(css, property, chain)
-            "#{name}: #{label} takes #{property} from the fallback's #{rule.selector} (#{rule.value})" if rule
-          end
+    it "leaves primitive styling to the dashboard stylesheet" do
+      offenders = FALLBACK_ELEMENTS.flat_map do |label, chain|
+        FALLBACK_PROPERTIES.filter_map do |property|
+          rule = decided_by_fallback(property, chain)
+          "#{label} takes #{property} from #{rule.selector} (#{rule.value})" if rule
         end
       end
 
       expect(offenders).to be_empty, offenders.join("\n")
     end
 
-    # The reading column. The themed content well is a <main> outside the
-    # chrome the fallback draws, and the fallback's own well used to cap it.
-    it "leaves the width of a themed shell's content well to the theme" do
-      offenders = @sheets.filter_map do |name, css|
-        width = CssCascade.value_of(CssCascade.themed(css), "max-width",
-                                    [CssCascade.node("main", "rb-shell-content")])
-        next nil if width.nil?
+    it "leaves the shell content width unconstrained" do
+      width = CssCascade.value_of(@combined_css, "max-width", [CssCascade.node("main", "rb-shell-content")])
 
-        "#{name}: the shell's content well resolves to max-width: #{width}"
-      end
-
-      expect(offenders).to be_empty, offenders.join("\n")
+      expect(width).to be_nil
     end
 
-    it "keeps a direct Tag and a one-item tag run content-sized in a section" do
-      offenders = @sheets.flat_map do |name, css|
-        sheet = CssCascade.themed(css)
-        { "a direct Tag" => FALLBACK_TAG, "a tag run" => FALLBACK_TAG_RUN }.filter_map do |label, chain|
-          next if content_sized_in_section?(sheet, chain)
-
-          "#{name}: #{label} stretches across its section"
-        end
+    it "keeps a direct tag and a one-item tag run content-sized" do
+      [FALLBACK_TAG, FALLBACK_TAG_RUN].each do |chain|
+        expect(content_sized_in_section?(@combined_css, chain)).to be(true)
       end
-
-      expect(offenders).to be_empty, offenders.join("\n")
     end
 
-    # A text input and a select in one form were two different controls,
-    # because the fallback names the input's type and can only name the select.
-    it "draws a text input and a select beside it as the same control" do
-      shape = %w[background border border-radius padding font-size color height]
-      offenders = @sheets.flat_map do |name, css|
-        sheet = CssCascade.themed(css)
-        input = FALLBACK_ELEMENTS.fetch("a text input")
-        select = FALLBACK_ELEMENTS.fetch("a select")
-        shape.filter_map do |property|
-          one = CssCascade.value_of(sheet, property, input)
-          two = CssCascade.value_of(sheet, property, select)
-          next nil if one == two
-
-          "#{name}: a text input's #{property} is #{one.inspect} and the select beside it is #{two.inspect}"
-        end
+    it "styles a text input and a select consistently" do
+      input = FALLBACK_ELEMENTS.fetch("a text input")
+      select = FALLBACK_ELEMENTS.fetch("a select")
+      %w[background border border-radius padding font-size color height].each do |property|
+        expect(CssCascade.value_of(@combined_css, property, input))
+          .to eq(CssCascade.value_of(@combined_css, property, select)), property
       end
-
-      expect(offenders).to be_empty, offenders.join("\n")
     end
 
-    # Resolved to a colour rather than compared as text: the pair that made
-    # this necessary both read var(--rb-success), one as an ink and one as a
-    # tint, and only the resolved values say they are the same colour.
-    it "leaves every status tone's ink readable against the ground it lands on" do
-      offenders = @sheets.flat_map do |name, css|
-        sheet = CssCascade.themed(css)
-        definitions = definitions_for(css)
-        FALLBACK_TONES.filter_map do |tone|
-          pill = FALLBACK_SECTION + [CssCascade.node("span", "rb-status", "rb-status--#{tone}")]
-          ink = CssColour.resolve(CssCascade.value_of(sheet, "color", pill), definitions)
-          ratio = CssColour.contrast(ink, CssColour.ground(sheet, pill, definitions))
-          next nil if ratio >= FALLBACK_MINIMUM_CONTRAST
+    it "keeps every status tone readable against its background" do
+      colours = definitions
+      FALLBACK_TONES.each do |tone|
+        pill = FALLBACK_SECTION + [CssCascade.node("span", "rb-status", "rb-status--#{tone}")]
+        ink = CssColour.resolve(CssCascade.value_of(@combined_css, "color", pill), colours)
+        ratio = CssColour.contrast(ink, CssColour.ground(@combined_css, pill, colours))
 
-          "#{name}: a #{tone} status resolves to #{ratio}:1 against its own ground"
-        end
+        expect(ratio).to be >= FALLBACK_MINIMUM_CONTRAST
       end
-
-      expect(offenders).to be_empty, offenders.join("\n")
     end
 
-    # A custom property with no fallback value and no definition draws nothing
-    # at all, so the rule it is in goes silently missing.
-    it "defines every custom property a theme names without a fallback value" do
+    it "defines every referenced custom property without a fallback value" do
       declared = declared_properties(@swatch) | declared_properties(CssCascade.fallback) |
-                 declared_properties(CssCascade.fallback_vocabulary)
-      offenders = @sheets.flat_map do |name, css|
-        (referenced_properties(css) - declared - declared_properties(css)).sort.map do |property|
-          "#{name}: names #{property} and nothing defines it"
-        end
-      end
+                 declared_properties(CssCascade.fallback_vocabulary) | declared_properties(@dashboard_css)
 
-      expect(offenders).to be_empty, offenders.join("\n")
+      expect(referenced_properties(@dashboard_css) - declared).to be_empty
     end
 
     def declared_properties(css) = css.scan(/(--[\w-]+)\s*:/).flatten.to_set
@@ -240,7 +194,7 @@ RSpec.describe "the fallback stylesheet under a theme" do
     end
   end
 
-  describe "the required theme page", :control_plane do
+  describe "a dashboard page", :control_plane do
     include Rack::Test::Methods
 
     let(:seeded) { seeded_sample }
@@ -253,10 +207,10 @@ RSpec.describe "the fallback stylesheet under a theme" do
 
     let(:env) { { "DASHBOARD_SECRET" => secret } }
 
-    it "serves the selected theme over the floor, with no old dashboard chrome" do
+    it "serves the dashboard stylesheet over the fallback, with no old dashboard chrome" do
       get "/communities/sample"
 
-      expect(last_response.body).to include(%(<link rel="stylesheet" href="/theme-series-a.css">))
+      expect(last_response.body).to include(%(<link rel="stylesheet" href="/dashboard.css">))
       expect(last_response.body).to include("@layer rubotty-fallback")
       expect(last_response.body).not_to include("#rb-chrome > main")
     end

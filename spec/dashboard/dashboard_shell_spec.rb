@@ -13,18 +13,18 @@ require "fileutils"
 # Navigation is DATA, read from one catalogue (Rubotty::Dashboard::Nav)
 # by every theme; themes are required, so the body stays hidden until
 # the theme adopts it; and the chrome itself has one class vocabulary.
-module ThemeShellSupport
+module DashboardShellSupport
 end
 
 RSpec.describe "the dashboard shell contract", :control_plane do
   include Rack::Test::Methods
 
-  ThemeShellSupport::SHELL_ROOT = File.expand_path("../..", __dir__)
-  ThemeShellSupport::SHELL_SUPPORT_DIR = File.expand_path("../support", __dir__)
-  ThemeShellSupport::SHELL_TOOLS = %w[node civet esbuild].freeze
-  ThemeShellSupport::SHELL_NODE = ThemeToolchain.path("node")
-  ThemeShellSupport::SHELL_CIVET = ThemeToolchain.path("civet")
-  ThemeShellSupport::SHELL_ESBUILD = ThemeToolchain.path("esbuild")
+  DashboardShellSupport::SHELL_ROOT = File.expand_path("../..", __dir__)
+  DashboardShellSupport::SHELL_SUPPORT_DIR = File.expand_path("../support", __dir__)
+  DashboardShellSupport::SHELL_TOOLS = %w[node civet esbuild].freeze
+  DashboardShellSupport::SHELL_NODE = DashboardToolchain.path("node")
+  DashboardShellSupport::SHELL_CIVET = DashboardToolchain.path("civet")
+  DashboardShellSupport::SHELL_ESBUILD = DashboardToolchain.path("esbuild")
 
   let(:seeded) { seeded_sample }
   let(:db) { seeded[0] }
@@ -265,8 +265,8 @@ RSpec.describe "the dashboard shell contract", :control_plane do
       get "/communities/sample"
       page = last_response.body
 
-      expect(page).to include("/theme-boot.js")
-      expect(page).not_to include("rubottyTheme.start(")
+      expect(page).to include("/dashboard-boot.js")
+      expect(page).not_to include("rubottyDashboard.start(")
       expect(shell_payload(page).dig("scopes", 0, "slug")).to eq("sample")
       expect(entries(shell_payload(page)).map { |item| item["key"] }).to include("endpoints", "rooms")
     end
@@ -274,8 +274,7 @@ RSpec.describe "the dashboard shell contract", :control_plane do
     it "stamps the selected theme and section before the deferred boot runs" do
       get "/communities/sample"
 
-      expect(last_response.body).to include(%(data-rb-theme="series-a"))
-      expect(last_response.body).to include(%(data-rb-themed-section="true"))
+      expect(last_response.body).to include(%(data-rb-client-section="true"))
     end
 
     it "serializes only the operator's permitted navigation" do
@@ -292,7 +291,7 @@ RSpec.describe "the dashboard shell contract", :control_plane do
   # it. Checked: the chrome renders FROM the document rather than a
   # list this theme keeps of its own, stays inside the shell vocabulary,
   # and a shell that cannot be drawn leaves the fallback alone.
-  if ThemeToolchain.ready?(ThemeShellSupport::SHELL_TOOLS)
+  if DashboardToolchain.ready?(DashboardShellSupport::SHELL_TOOLS)
     describe "a theme's own chrome, compiled and driven" do
       def run!(*cmd)
         out, status = Open3.capture2e(*cmd)
@@ -307,17 +306,15 @@ RSpec.describe "the dashboard shell contract", :control_plane do
       # above it.
       def build
         @build ||= begin
-          FileUtils.mkdir_p(File.join(ThemeShellSupport::SHELL_ROOT, "tmp"))
-          dir = Dir.mktmpdir("shell-spec", File.join(ThemeShellSupport::SHELL_ROOT, "tmp"))
-          %w[runtime series-a].each do |part|
-            out = File.join(dir, part)
-            FileUtils.mkdir_p(out)
-            run!(ThemeShellSupport::SHELL_CIVET, "--js", "-c",
-                 *Dir.glob(File.join(ThemeShellSupport::SHELL_ROOT, "assets/themes/#{part}/*.civet")), "-o", "#{out}/.js")
-          end
-          run!(ThemeShellSupport::SHELL_ESBUILD, File.join(dir, "runtime", "index.js"), "--bundle", "--format=iife",
-               "--global-name=rubottyTheme", "--outfile=#{File.join(dir, "runtime.js")}")
-          run!(ThemeShellSupport::SHELL_ESBUILD, File.join(dir, "runtime", "boot.js"), "--bundle", "--format=iife",
+          FileUtils.mkdir_p(File.join(DashboardShellSupport::SHELL_ROOT, "tmp"))
+          dir = Dir.mktmpdir("shell-spec", File.join(DashboardShellSupport::SHELL_ROOT, "tmp"))
+          out = File.join(dir, "runtime")
+          FileUtils.mkdir_p(out)
+          run!(DashboardShellSupport::SHELL_CIVET, "--js", "-c",
+               *Dir.glob(File.join(DashboardShellSupport::SHELL_ROOT, "assets/dashboard/runtime/*.civet")), "-o", "#{out}/.js")
+          run!(DashboardShellSupport::SHELL_ESBUILD, File.join(dir, "runtime", "index.js"), "--bundle", "--format=iife",
+               "--global-name=rubottyDashboard", "--outfile=#{File.join(dir, "runtime.js")}")
+          run!(DashboardShellSupport::SHELL_ESBUILD, File.join(dir, "runtime", "boot.js"), "--bundle", "--format=iife",
                "--outfile=#{File.join(dir, "boot.js")}")
           { dir: dir, runtime: File.join(dir, "runtime.js"),
             boot: File.join(dir, "boot.js") }
@@ -337,7 +334,7 @@ RSpec.describe "the dashboard shell contract", :control_plane do
       let(:result) do
         nav_path = File.join(build[:dir], "nav.json")
         File.write(nav_path, JSON.generate(document))
-        JSON.parse(run!(ThemeShellSupport::SHELL_NODE, File.join(ThemeShellSupport::SHELL_SUPPORT_DIR, "theme_shell_checks.js"),
+        JSON.parse(run!(DashboardShellSupport::SHELL_NODE, File.join(DashboardShellSupport::SHELL_SUPPORT_DIR, "dashboard_shell_checks.js"),
                         build[:runtime], nav_path))
       end
 
@@ -364,7 +361,7 @@ RSpec.describe "the dashboard shell contract", :control_plane do
                .shell(path: "/communities/sample/features/bridge/config")
         nav_path = File.join(build[:dir], "deep-nav.json")
         File.write(nav_path, JSON.generate(deep))
-        drawn = JSON.parse(run!(ThemeShellSupport::SHELL_NODE, File.join(ThemeShellSupport::SHELL_SUPPORT_DIR, "theme_shell_checks.js"),
+        drawn = JSON.parse(run!(DashboardShellSupport::SHELL_NODE, File.join(DashboardShellSupport::SHELL_SUPPORT_DIR, "dashboard_shell_checks.js"),
                                 build[:runtime], nav_path)).fetch("html")
 
         expect(deep.fetch("crumbs").map { |crumb| crumb["label"] })
@@ -380,7 +377,7 @@ RSpec.describe "the dashboard shell contract", :control_plane do
       end
 
       it "has a rule in the theme's stylesheet for every piece of chrome it draws" do
-        sheet = File.read(File.expand_path("../../assets/themes/series-a/_shell.scss", __dir__),
+        sheet = File.read(File.expand_path("../../assets/dashboard/_shell.scss", __dir__),
                           encoding: "UTF-8")
         unstyled = classes_in(result.fetch("html")).reject { |name| sheet.include?(".#{name}") }
 
@@ -395,13 +392,13 @@ RSpec.describe "the dashboard shell contract", :control_plane do
         let(:booted) do
           nav_path = File.join(build[:dir], "boot-nav.json")
           File.write(nav_path, JSON.generate(document))
-          JSON.parse(run!(ThemeShellSupport::SHELL_NODE, File.join(ThemeShellSupport::SHELL_SUPPORT_DIR, "theme_boot_checks.js"),
+          JSON.parse(run!(DashboardShellSupport::SHELL_NODE, File.join(DashboardShellSupport::SHELL_SUPPORT_DIR, "dashboard_boot_checks.js"),
                           build[:runtime], build[:boot], nav_path))
                     .to_h { |one| [one.fetch("case"), one] }
         end
 
         it "is moved into the theme's own slot, and stays staged and hidden, when the chrome mounts" do
-          mounted = booted.fetch("the theme mounts its chrome")
+          mounted = booted.fetch("the dashboard mounts its chrome")
 
           expect(mounted.fetch("intoDeclaredSlot")).to be(true), mounted.fetch("adoptedBy").inspect
           expect(mounted.fetch("revealed")).to be(false)
@@ -409,7 +406,7 @@ RSpec.describe "the dashboard shell contract", :control_plane do
 
         it "is revealed by every way a theme has of not taking it over" do
           failures = booted.reject do |name, one|
-            name == "the theme mounts its chrome" || one.key?("flashScrolledWith")
+            name == "the dashboard mounts its chrome" || one.key?("flashScrolledWith")
           end
 
           expect(failures.length).to eq(3)
@@ -432,7 +429,7 @@ RSpec.describe "the dashboard shell contract", :control_plane do
     end
   else
     it "has no toolchain installed to render the shell with" do
-      ThemeToolchain.report_gap!(self, ThemeShellSupport::SHELL_TOOLS, "the shell render checks")
+      DashboardToolchain.report_gap!(self, DashboardShellSupport::SHELL_TOOLS, "the shell render checks")
     end
   end
 end

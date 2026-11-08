@@ -5,28 +5,28 @@ require "rubotty/dashboard"
 require "rack/test"
 require "json"
 
-# Series A's own source files: the wiring that hands every ported
+# the dashboard's own source files: the wiring that hands every ported
 # section to the themed path, and a static proof that this theme draws
 # no markup of its own any more. Held to text checks rather than a
-# compile; the real compile lives in themed_rendered_vocabulary_spec.rb.
-RSpec.describe "the Series A theme's source", :control_plane do
+# compile; the real compile lives in client_rendered_vocabulary_spec.rb.
+RSpec.describe "the dashboard presentation's source", :control_plane do
   include Rack::Test::Methods
 
-  ASSETS_ROOT = File.expand_path("../../assets/themes/series-a", __dir__)
-  RUNTIME_ROOT = File.expand_path("../../assets/themes/runtime", __dir__)
+  ASSETS_ROOT = File.expand_path("../../assets/dashboard", __dir__)
+  RUNTIME_ROOT = File.expand_path("../../assets/dashboard/runtime", __dir__)
   STYLE_SOURCE = File.join(ASSETS_ROOT, "style.scss")
   SHELL_STYLE_SOURCE = File.join(ASSETS_ROOT, "_shell.scss")
-  CIVET_SOURCE = File.join(ASSETS_ROOT, "index.civet")
-  SHELL_CIVET_SOURCE = File.join(ASSETS_ROOT, "shell.civet")
+  CIVET_SOURCE = File.join(RUNTIME_ROOT, "index.civet")
+  SHELL_CIVET_SOURCE = File.join(RUNTIME_ROOT, "chrome.civet")
   PRIMITIVES_SOURCE = File.join(RUNTIME_ROOT, "primitives.civet")
 
-  # The classes the shared emitters (assets/themes/runtime/primitives.civet)
-  # draw for every primitive Series A's ported screens use, matching
+  # The classes the shared emitters (assets/dashboard/runtime/primitives.civet)
+  # draw for every primitive the dashboard's ported screens use, matching
   # screens_spec.rb's SCREENS manifest. Copied rather than derived, since
   # Primitives::CLASSES holds all fifteen in one flat list with no
   # per-primitive grouping; checked below against that constant so a
   # rename there fails this instead of drifting quietly.
-  THEME_CLASSES = %w[
+  PRESENTATION_CLASSES = %w[
     rb-page rb-page--default rb-page--wide rb-page-title rb-page-lede rb-page-body
     rb-section rb-section--default rb-section--plain rb-section--collapsible
     rb-section-title rb-section-body
@@ -73,11 +73,11 @@ RSpec.describe "the Series A theme's source", :control_plane do
 
     before { admin! }
 
-    it "carries the theme's own script and stylesheet, alongside the runtime's" do
+    it "loads the dashboard runtime and stylesheet" do
       get "/communities/sample"
 
-      expect(last_response.body).to include(%(<script src="/theme-runtime.js" defer></script>))
-      expect(last_response.body).to include(%(<link rel="stylesheet" href="/theme-series-a.css">))
+      expect(last_response.body).to include(%(<script src="/dashboard-runtime.js" defer></script>))
+      expect(last_response.body).to include(%(<link rel="stylesheet" href="/dashboard.css">))
     end
 
     it "links its stylesheet after the floor, so it wins wherever the two meet" do
@@ -85,105 +85,104 @@ RSpec.describe "the Series A theme's source", :control_plane do
       body = last_response.body
 
       expect(body.index("@layer rubotty-fallback"))
-        .to be < body.index(%(<link rel="stylesheet" href="/theme-series-a.css">))
+        .to be < body.index(%(<link rel="stylesheet" href="/dashboard.css">))
     end
 
-    it "gives the theme a stable mount point around the view, outside the flash slots" do
+    it "gives the dashboard a stable mount point around the view, outside the flash slots" do
       get "/communities/sample"
 
       expect(last_response.body).to match(%r{<div id="rb-staging" hidden>.*<div id="rb-view">.*</div>\s*</div>}m)
     end
 
-    def expect_theme_boot(sections: true)
-      expect(last_response.body).to include(%(<script src="/theme-boot.js" defer></script>))
-      expect(last_response.body).to include(%(data-rb-theme="series-a"))
-      expect(last_response.body).to include(%(data-rb-themed-section="#{sections}"))
-      expect(last_response.body).not_to include("rubottyTheme.start(")
+    def expect_dashboard_boot(sections: true)
+      expect(last_response.body).to include(%(<script src="/dashboard-boot.js" defer></script>))
+      expect(last_response.body).to include(%(data-rb-client-section="#{sections}"))
+      expect(last_response.body).not_to include("rubottyDashboard.start(")
     end
 
-    it "boots the required theme on Overview" do
+    it "starts the dashboard on Overview" do
       get "/communities/sample"
 
-      expect_theme_boot
+      expect_dashboard_boot
     end
 
-    it "boots the required theme on Endpoints too" do
+    it "starts the dashboard on Endpoints too" do
       get "/communities/sample/endpoints"
 
-      expect_theme_boot
+      expect_dashboard_boot
     end
 
-    it "boots the required theme on Redirections too" do
+    it "starts the dashboard on Redirections too" do
       get "/communities/sample/redirections"
 
-      expect_theme_boot
+      expect_dashboard_boot
     end
 
-    it "boots the required theme on Scripts too" do
+    it "starts the dashboard on Scripts too" do
       get "/communities/sample/scripts"
 
-      expect_theme_boot
+      expect_dashboard_boot
     end
 
-    it "boots the required theme on Webhooks too" do
+    it "starts the dashboard on Webhooks too" do
       get "/communities/sample/webhooks"
 
-      expect_theme_boot
+      expect_dashboard_boot
     end
 
-    it "boots the required theme on Features too" do
+    it "starts the dashboard on Features too" do
       get "/communities/sample/features"
 
-      expect_theme_boot
+      expect_dashboard_boot
     end
 
-    it "boots the required theme on a feature's config editor too" do
+    it "starts the dashboard on a feature's config editor too" do
       get "/communities/sample/features/bridge/config"
 
-      expect_theme_boot
+      expect_dashboard_boot
     end
 
-    it "boots the required theme on Room games too" do
+    it "starts the dashboard on Room games too" do
       get "/communities/sample/participation"
 
-      expect_theme_boot
+      expect_dashboard_boot
     end
 
-    it "boots the required theme on Alerts too" do
+    it "starts the dashboard on Alerts too" do
       get "/communities/sample/alerts"
 
-      expect_theme_boot
+      expect_dashboard_boot
     end
 
-    it "boots the required theme on Files too" do
+    it "starts the dashboard on Files too" do
       get "/communities/sample/files"
 
-      expect_theme_boot
+      expect_dashboard_boot
     end
 
-    it "boots the required theme on Backfill proposals too" do
+    it "starts the dashboard on Backfill proposals too" do
       get "/backfill-proposals"
 
-      expect_theme_boot
+      expect_dashboard_boot
     end
 
-    it "boots the required theme on Documentation too" do
+    it "starts the dashboard on Documentation too" do
       get "/documentation"
 
-      expect_theme_boot
+      expect_dashboard_boot
     end
 
     # Signed out, which is the case that needs saying: the section read behind
     # this page is open for the same reason the page is, and a 401 there would
     # send the runtime into a reload loop rather than showing anybody the
     # terms they are being asked to agree to.
-    it "boots the required theme on the licence with no session at all" do
+    it "starts the dashboard on the licence with no session at all" do
       offsession = Rack::Test::Session.new(Rack::MockSession.new(app))
       offsession.get "/licence"
 
       expect(offsession.last_response.status).to eq(200)
-      expect(offsession.last_response.body).to include(%(data-rb-themed-section="true"))
-      expect(offsession.last_response.body).to include(%(<script src="/theme-boot.js" defer></script>))
+      expect(offsession.last_response.body).to include(%(data-rb-client-section="true"))
+      expect(offsession.last_response.body).to include(%(<script src="/dashboard-boot.js" defer></script>))
 
       offsession.get "/internal/licence"
       expect(offsession.last_response.status).to eq(200)
@@ -207,26 +206,26 @@ RSpec.describe "the Series A theme's source", :control_plane do
     # The chrome is theme-owned, so it mounts everywhere. A theme that only
     # mounted on the sections it draws would swap the whole shell out from
     # under an operator on every link into one that is still ERB.
-    it "boots the required theme on a section it does not draw, for the chrome alone" do
+    it "starts the dashboard on a section it does not draw, for the chrome alone" do
       get_walled_off
 
-      expect_theme_boot(sections: false)
+      expect_dashboard_boot(sections: false)
     end
 
-    it "draws no themed section on the request-access branch of the same route" do
+    it "keeps server-rendered content on the request-access branch of the same route" do
       get_walled_off
 
       expect(last_response.body).to include("Request access")
-      expect(last_response.body).to include(%(data-rb-themed-section="false"))
+      expect(last_response.body).to include(%(data-rb-client-section="false"))
     end
 
-    it "starts Series A with no opt-in setting" do
+    it "starts the dashboard with no opt-in setting" do
       default_app = Rubotty::Dashboard::App.assemble(deps: deps, env: { "DASHBOARD_SECRET" => secret })
       session = Rack::Test::Session.new(Rack::MockSession.new(default_app))
       session.post "/login", secret: secret
       session.get "/communities/sample"
 
-      expect(session.last_response.body).to include("theme-series-a")
+      expect(session.last_response.body).to include("dashboard.css")
       expect(session.last_response.body).to include(%(<div id="rb-view">))
     end
   end
@@ -267,9 +266,9 @@ RSpec.describe "the Series A theme's source", :control_plane do
       expect(wide_sidebar).to include("width: $sidebar-wide-width")
     end
 
-    # Against the classes THIS theme's own chrome draws rather than the whole
+    # Against the classes the dashboard's own chrome draws rather than the whole
     # shared vocabulary: the vocabulary now carries pieces built for a
-    # structurally different shell (Command Centre's list pane) that Series A
+    # structurally different shell (Command Centre's list pane) that the dashboard
     # has no use for, the same latitude it already gives rb-shell-side.
     it "styles every piece of chrome its own shell draws" do
       shell_source = File.read(SHELL_CIVET_SOURCE, encoding: "UTF-8")
@@ -282,13 +281,13 @@ RSpec.describe "the Series A theme's source", :control_plane do
     end
 
     it "styles a class for every primitive the ported screens declare" do
-      THEME_CLASSES.each do |css_class|
+      PRESENTATION_CLASSES.each do |css_class|
         expect(source).to include(".#{css_class}"),
                           "#{STYLE_SOURCE} has no rule for .#{css_class}"
       end
     end
 
-    # Looser than "exactly THEME_CLASSES and nothing else": checking
+    # Looser than "exactly PRESENTATION_CLASSES and nothing else": checking
     # against the real fifteen-primitive vocabulary is the invariant
     # that holds forever, rather than one edited per screen ported. A
     # bespoke, non-primitive class is still caught; an unused primitive is not.
@@ -301,8 +300,8 @@ RSpec.describe "the Series A theme's source", :control_plane do
       }
     end
 
-    it "keeps THEME_CLASSES itself true to the primitive vocabulary" do
-      expect(THEME_CLASSES - Rubotty::Dashboard::Primitives::CLASSES).to be_empty
+    it "keeps PRESENTATION_CLASSES itself true to the primitive vocabulary" do
+      expect(PRESENTATION_CLASSES - Rubotty::Dashboard::Primitives::CLASSES).to be_empty
     end
   end
 
@@ -323,7 +322,7 @@ RSpec.describe "the Series A theme's source", :control_plane do
       expect(color_literals(source)).to be_empty
     end
 
-    it "are reached off the runtime's own exports, not duplicated per theme" do
+    it "are reached off the runtime's own exports, through the dashboard bundle" do
       expect(source).to match(/export\s*\{[^}]*\bpage\b/m)
       expect(source).to match(/export\s*\{[^}]*\bsection\b/m)
       expect(source).to match(/export\s*\{[^}]*\bnotice\b/m)
@@ -339,48 +338,15 @@ RSpec.describe "the Series A theme's source", :control_plane do
     end
   end
 
-  describe "the Civet module" do
-    let(:source) { File.read(CIVET_SOURCE, encoding: "UTF-8") }
+  describe "dashboard navigation" do
+    it "loads the fixed shell and screen renderers directly" do
+      source = File.read(CIVET_SOURCE, encoding: "UTF-8")
 
-    it "exists as one module, bundled to one script" do
-      expect(File).to exist(CIVET_SOURCE)
-    end
-
-    it "takes the lifecycle off the shared screens rather than writing one of its own" do
-      expect(source).to include("screens()")
-      expect(without_line_comments(source)).not_to match(/\bfunction\s+(init|draw|teardown)\b/)
-    end
-
-    it "carries no colour literal either" do
-      expect(color_literals(source)).to be_empty
-    end
-
-    # Two rounds of the same drift: this theme first drew page, section,
-    # notice, button and statCell as private templates, then kept a
-    # private copy of every screen composed from them. Both are the
-    # runtime's now, so the content half of this file writes no tag at all.
-    it "writes no markup here at all, the content half being the runtime's" do
-      tags = without_line_comments(source).scan(/<([a-zA-Z][a-zA-Z0-9]*)/).flatten.uniq.sort
-
-      expect(tags).to be_empty, "hand-rolled tag(s) found in #{CIVET_SOURCE}: #{tags.join(", ")}"
-    end
-
-    it "defines neither an emitter nor a screen renderer of its own any more" do
-      body = without_line_comments(source)
-
-      expect(body).not_to match(/\bfunction\s+(page|section|notice|statCell)\b/)
-      expect(body).not_to match(/\bfunction\s+render[A-Z]/)
-    end
-
-    it "hands the chrome to its own module rather than drawing it here" do
-      expect(source).to include(%(import { shell } from "./shell.civet"))
-      expect(source).to include("theme := { ...screens(), shell }")
+      expect(source).to include(%(import { shell } from "./chrome.civet"))
+      expect(source).to include(%(import { SCREENS } from "./screens.civet"))
     end
   end
 
-  # The chrome, which is the one place this theme legitimately writes markup:
-  # Series A draws its own navigation and frame. It is a separate module so the tag
-  # check above still means what it says about the content half.
   describe "the shell module" do
     let(:source) { File.read(SHELL_CIVET_SOURCE, encoding: "UTF-8") }
 
@@ -429,18 +395,17 @@ RSpec.describe "the Series A theme's source", :control_plane do
     let(:scripts) { package.fetch("scripts") }
 
     it "compiles the stylesheet, the Civet module, and bundles the module, each its own step" do
-      expect(scripts["build:theme-series-a-style"]).to include("assets/themes/series-a/style.scss")
-      expect(scripts["build:theme-series-a-civet"]).to include("assets/themes/series-a")
+      expect(scripts["build:dashboard-style"]).to include("assets/dashboard/style.scss")
     end
 
-    it "runs all three from the top level build script" do
-      %w[build:theme-series-a-style build:theme-series-a-civet].each do |step|
+    it "builds the fixed styles and runtime from the top level build script" do
+      %w[build:dashboard-style build:civet build:dashboard-runtime].each do |step|
         expect(scripts.fetch("build")).to include("npm run #{step}")
       end
     end
 
     it "compiles the shared runtime primitives alongside the rest of the runtime's Civet" do
-      expect(scripts["build:civet"]).to include("assets/themes/runtime/*.civet")
+      expect(scripts["build:civet"]).to include("assets/dashboard/runtime/*.civet")
     end
   end
 end

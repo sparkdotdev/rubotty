@@ -16,7 +16,7 @@ const GREEN = "#12662f";
 const RULE = "#d7dce2";
 const WASH = "#eceff2";
 
-export const rubottyTheme = EditorView.theme(
+export const editorStyle = EditorView.theme(
   {
     "&": { color: INK, backgroundColor: "#fff", border: `1px solid ${RULE}`, borderRadius: "6px" },
     ".cm-content": {

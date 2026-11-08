@@ -46,7 +46,7 @@
 
   /* Light is the base, dark applies under the OS preference, and an explicit
      data-theme on the root outranks both on specificity alone. The same three
-     way cascade assets/themes/_swatch.scss writes, so the page and the swatch
+     way cascade assets/dashboard/_swatch.scss writes, so the page and the swatch
      agree about which mode they are in however the reader chose it. */
   @media (prefers-color-scheme: dark) {
     :root { color-scheme: dark;
@@ -118,7 +118,7 @@
 
   /* The two resets every theme is written against and none of them restates.
      A theme that mounts covers the page ground with its own shell, so what
-     these draw on a themed page is the gutter around it. */
+     these draw on a client-rendered page is the gutter around it. */
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
          line-height: 1.5; color: var(--fb-ink); background: var(--fb-page); }

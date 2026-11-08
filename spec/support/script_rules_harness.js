@@ -1,7 +1,7 @@
 // Drives the compiled condition rule builder the way a browser does, over a
 // DOM small enough to write down: the two real controls the form posts, and
 // the mount the builder draws into. Nothing here simulates the module; it is
-// the real compiled output of assets/themes/runtime/script-rules.civet, so a
+// the real compiled output of assets/dashboard/runtime/script-rules.civet, so a
 // change that stops the list serialising back into trigger_type and
 // trigger_also[] fails here rather than in somebody's browser.
 //

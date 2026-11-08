@@ -1,34 +1,9 @@
-// Series A: the polished corporate theme, and the first one built: clean,
-// restrained, quiet confidence, reading as software rather than a sketch.
-//
-// Every colour here is a swatch custom property. No hex, no rgb()/rgba(), no
-// named colour, not even for a border nobody will notice: the contract this
-// whole layer rests on is that a theme compiles once and a swatch recompiles
-// nothing. Definition sits over the primitive it renders, in the order
-// Primitives::NAMES lists them: Page and Section (layout), then Notice,
-// Table, Form, Field, Button, Status, Tag, KeyValues, StatRow, Code and
-// TabLinks (identity), which is what Overview, Endpoints, Features, its config
-// editor and Room games together draw with, then Chart, which Analytics draws.
-//
-// Depth comes from a border rather than a shadow on purpose. A drop shadow
-// wants a translucent black no swatch role names, and a crisp rule reads as
-// more restrained than a soft blur anyway, which is the whole brief.
-
-// The chrome this theme draws around a page (sidebar, topbar, drawer) is its
-// own file, since it is a whole second surface with its own measurements.
-// One compiled stylesheet either way.
+// Dashboard styles use colour roles from the palette.
 @use "shell";
-@use "../form_fields" as fields;
+@use "form_fields" as fields;
 
 $font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
-// One small scale, used nowhere else, so this theme's typography does not
-// depend on another theme's custom properties: in px, lifted from the
-// mockup, since written in rem they'd resolve against the browser's 16px
-// root while the mockup's body is 14.5px, drawing the whole theme about a
-// quarter looser than the design. $fs-lg and $fs-xl are both 24px, since
-// the mockup draws .stat-value and .page-head h1 at 24px alike, two names
-// for two decisions all the same.
 $fs-xs: 11px;
 $fs-pill: 11.5px;
 $fs-sm: 13px;

@@ -1,28 +1,17 @@
-// Start the required dashboard theme from the document the server already
-// rendered. The content staging area stays hidden until this has mounted the
-// shell, so an unthemed panel never reaches the screen.
-//
-// A start that fails leaves the page where it is, and settle() below is what
-// puts it on screen anyway: hidden is how the panel avoids a flash, and it
-// must never become how the panel disappears.
-
+// Mount the dashboard with the server-rendered navigation and content.
 function shellData(): any
   node := document.getElementById "rb-shell-data"
   return null unless node
 
   JSON.parse node.textContent ?? ""
 
-// Whether the page is still on the staging shelf, which is the whole question
-// of whether anything drew it: a theme that mounts its chrome MOVES the page
-// into its own slot, so a page still parented here was taken over by nothing.
+// The content remains staged when startup cannot mount the dashboard.
 function staged(staging: any): boolean
   return false unless staging
 
   document.getElementById("rb-content")?.parentNode is staging
 
-// The last word on whether the staged page is on screen, either way round: a
-// theme that took the page has left an empty shelf and it stays out of the
-// way, and one that did not has left the panel, which has to be visible.
+// Keep the server-rendered page visible if startup could not move it.
 function settle(staging: any): void
   return unless staging
 
@@ -45,17 +34,17 @@ async function boot(): Promise<void>
   root := document.documentElement
   staging := document.getElementById "rb-staging"
   try
-    await rubottyTheme.start(
+    await rubottyDashboard.start(
       base: root.dataset.rbBase ?? ""
       root: document.getElementById "rb-view"
       shell: document.getElementById "rb-shell"
       content: document.getElementById "rb-content"
       footer: document.getElementById "rb-footer"
       nav: shellData()
-      sections: root.dataset.rbThemedSection is "true"
+      sections: root.dataset.rbClientSection is "true"
     )
   finally
     settle staging
     revealFlash()
 
-boot().catch (error: any) => console?.error? "rubotty theme could not start", error
+boot().catch (error: any) => console?.error? "rubotty dashboard could not start", error

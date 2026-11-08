@@ -8,7 +8,7 @@
 # absent, and a pending example reads as a pass in the summary: runs looked
 # clean while the themed rendering was never exercised. RUBOTTY_THEME_TOOLCHAIN=optional
 # is the same opt-out spec_helper.rb gives sandbox layers a machine lacks.
-module ThemeToolchain
+module DashboardToolchain
   ROOT = File.expand_path("../..", __dir__)
   SOURCES = File.join(ROOT, "assets", "themes")
   OPT_OUT = "RUBOTTY_THEME_TOOLCHAIN"

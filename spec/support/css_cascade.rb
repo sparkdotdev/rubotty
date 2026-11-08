@@ -20,7 +20,7 @@ module CssCascade
   def fallback_vocabulary = read("fallback-vocabulary.css")
 
   # What a themed page loads, in source order.
-  def themed(theme_css) = "#{fallback}\n#{theme_css}"
+  def dashboard(css) = "#{fallback}\n#{css}"
 
   # What a page loads with the theme layer switched off.
   def unthemed = "#{fallback}\n#{fallback_vocabulary}"

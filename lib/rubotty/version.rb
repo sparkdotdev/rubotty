@@ -13,7 +13,7 @@ module Rubotty
     # Honest about being unresolved, so a checkout with no baked file (a gem
     # install, a plain clone, a shallow CI checkout) reports that plainly
     # rather than a specific patch nobody actually released.
-    FALLBACK = "0.8.2-unresolved"
+    FALLBACK = "0.8.3-unresolved"
 
     def self.resolve(path = RESOLVED_FILE)
       baked = File.exist?(path) ? File.read(path, encoding: "UTF-8").strip : ""

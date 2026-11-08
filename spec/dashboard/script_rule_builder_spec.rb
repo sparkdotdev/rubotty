@@ -31,10 +31,10 @@ RSpec.describe "the script condition rule builder", :control_plane do
     dir = Dir.mktmpdir("rule-builder", File.join(RULES_ROOT, "tmp"))
     compiled = File.join(dir, "civet")
     FileUtils.mkdir_p(compiled)
-    run!(ThemeToolchain.path("civet"), "--js", "-c",
-         *Dir.glob(File.join(RULES_ROOT, "assets/themes/runtime/*.civet")), "-o", "#{compiled}/.js")
+    run!(DashboardToolchain.path("civet"), "--js", "-c",
+         *Dir.glob(File.join(RULES_ROOT, "assets/dashboard/runtime/*.civet")), "-o", "#{compiled}/.js")
     bundle = File.join(dir, "script-rules.js")
-    run!(ThemeToolchain.path("esbuild"), File.join(compiled, "script-rules.js"), "--bundle",
+    run!(DashboardToolchain.path("esbuild"), File.join(compiled, "script-rules.js"), "--bundle",
          "--format=iife", "--global-name=rubottyScriptRules", "--outfile=#{bundle}")
     { dir: dir, bundle: bundle }
   end
@@ -48,7 +48,7 @@ RSpec.describe "the script condition rule builder", :control_plane do
     end
   end
 
-  if ThemeToolchain.ready?(RULES_TOOLS)
+  if DashboardToolchain.ready?(RULES_TOOLS)
     before(:context) { @build = build_rules_bundle }
     after(:context) { FileUtils.remove_entry(@build[:dir], true) }
 
@@ -58,7 +58,7 @@ RSpec.describe "the script condition rule builder", :control_plane do
         "trigger_type" => trigger_type, "trigger_also" => trigger_also,
         "triggers" => catalogue, "max_conditions" => max_conditions, "act" => act
       ))
-      JSON.parse(run!(ThemeToolchain.path("node"),
+      JSON.parse(run!(DashboardToolchain.path("node"),
                       File.join(RULES_SUPPORT, "script_rules_harness.js"), @build[:bundle], path))
     end
 
@@ -133,7 +133,7 @@ RSpec.describe "the script condition rule builder", :control_plane do
     end
   else
     it "is skipped: the theme toolchain is not installed" do |example|
-      ThemeToolchain.report_gap!(example, RULES_TOOLS, "the condition rule builder")
+      DashboardToolchain.report_gap!(example, RULES_TOOLS, "the condition rule builder")
     end
   end
 

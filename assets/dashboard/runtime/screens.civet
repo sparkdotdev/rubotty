@@ -1,11 +1,3 @@
-// The screens: one renderer per themed section, composed out of the shared
-// emitters in ./primitives.civet. These moved out of each theme's own
-// index.civet, since composing them is theme-independent work, and four
-// copies of the same renderers was the same drift already killed at the
-// primitive level, just moved up one.
-//
-// screens() at the bottom binds these renderers to the dashboard mount.
-
 import {
   escapeHtml, Format, page, section, notice, table, form, field, button,
   state as statusPill, tag, keyValues, statRow, tabLinks, prose, actionsRow, code, toggleSummary
@@ -3955,36 +3947,4 @@ SCREENS := {
   licence: renderLicence
 }
 
-// The dashboard screen lifecycle keeps its mount and base between navigations.
-function screens(): any
-  drawn := SCREENS
-  sections := Object.keys(drawn).filter (name: string) => typeof drawn[name] is "function"
-  mount .= null
-  base .= ""
-
-  // Safe to call again with the same view (the lifecycle contract every theme
-  // owes), since it replaces the mount's whole contents rather than patching.
-  function draw(view: any): void
-    renderer := drawn[view.section]
-    unless renderer
-      // Insurance: the router already keeps off a section +sections+ leaves
-      // out. Guarded on the address actually changing, because navigating to
-      // the address already showing reloads the document into the same state
-      // and does it again, forever.
-      target := base + view.path
-      window.location.href = target unless window.location.pathname is target
-      return
-
-    return unless mount
-    mount.innerHTML = renderer(view.data, base)
-
-  function teardown(): void
-    mount.innerHTML = "" if mount
-
-  function init(options: any): void
-    mount = options.root
-    base = options.base ?? ""
-
-  { init, draw, teardown, sections }
-
-export { SCREENS, screens }
+export { SCREENS }

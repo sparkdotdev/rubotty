@@ -13,7 +13,7 @@ HORIZONTAL_LABEL := 8
 
 // Where a category label is cut, per orientation, counting the ellipsis. The
 // sideways figure's own gutter below is measured against this many characters
-// at the size Series A draws them.
+// at the size the dashboard draws them.
 LABEL_LIMIT := { horizontal: 16, vertical: 12 }
 
 // How strongly the area under a time series is filled. The line is the
@@ -148,7 +148,7 @@ function verticalBars(rows: any[]): string
 
 // Bars on their side: the shape that copes with a ranked list and with labels
 // that are room names rather than hours. The gutter holds a label cut to
-// LABEL_LIMIT.horizontal at the size Series A draws it, which is what
+// LABEL_LIMIT.horizontal at the size the dashboard draws it, which is what
 // keeps a real room name inside the drawing rather than off the left edge of
 // it; the same 29% of the width the mockups' own ranked lists give a label.
 function horizontalBars(rows: any[]): string

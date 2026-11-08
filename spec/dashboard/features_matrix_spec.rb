@@ -7,7 +7,7 @@ require "cgi"
 
 # The Features page: a per-scope toggle matrix over every catalog
 # feature. Each feature is its own collapsible Section row (mirroring
-# renderFeatures in assets/themes/runtime/screens.civet), rather than
+# renderFeatures in assets/dashboard/runtime/screens.civet), rather than
 # the flat table it used to be (#1398).
 module FeaturesMatrixSupport
 end

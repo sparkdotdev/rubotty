@@ -28,7 +28,7 @@ RSpec.describe "the Rooms board detail actions", :control_plane do
 
     expect(last_response.status).to eq(200)
     expect(last_response.body).to include("Loading the channel details")
-    expect(last_response.body).to include(%(data-rb-themed-section="true"))
+    expect(last_response.body).to include(%(data-rb-client-section="true"))
   end
 
   it "saves a channel name without silently approving a proposed name" do

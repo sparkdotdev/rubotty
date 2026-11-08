@@ -36,7 +36,7 @@
                tone: :info) %>
     <%# Each trigger describes itself (its summary, the fields it reads and what %>
     <%# it hands over), so this page cannot offer a box a trigger ignores. The %>
-    <%# behaviour reading it lives in assets/themes/runtime/script-triggers.civet. %>
+    <%# behaviour reading it lives in assets/dashboard/runtime/script-triggers.civet. %>
     <script type="application/json" id="trigger-help">
       <%= Rubotty::Scripting::Triggers::TYPES.map { |type|
             { "name" => type.type_name, "summary" => type.summary, "fields" => type.fields,

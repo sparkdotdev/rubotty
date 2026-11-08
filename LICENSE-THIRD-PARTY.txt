@@ -8,7 +8,7 @@ Generate a software bill of materials from the actual release image and package 
 
 ## Dashboard browser bundles
 
-The editor and theme runtime bundles contain the following packages. Each linked file reproduces the complete upstream licence text. The asset build verifies these texts against the installed packages and includes the relevant notices in every JavaScript bundle that contains their code.
+The dashboard editor and navigation bundles contain the following packages. Each linked file reproduces the complete upstream licence text. The asset build verifies these texts against the installed packages and includes the relevant notices in every JavaScript bundle that contains their code.
 
 - `@codemirror/autocomplete` 6.20.3: [complete MIT notice](licenses/npm/codemirror-autocomplete.txt).
 - `@codemirror/commands` 6.10.4: [complete MIT notice](licenses/npm/codemirror-commands.txt).
@@ -27,7 +27,7 @@ The editor and theme runtime bundles contain the following packages. Each linked
 - `w3c-keyname` 2.2.8: [complete MIT notice](licenses/npm/w3c-keyname.txt).
 - `js-yaml` 4.3.2: [complete MIT notice](licenses/npm/js-yaml.txt).
 
-The Series A styles, standard chart renderer and theme bootstrap bundles currently contain only project source. Civet, esbuild and Sass are build tools; their installed packages are not copied into these browser bundles.
+The dashboard styles, chart renderer and startup scripts contain only project source. Civet, esbuild and Sass are build tools; their installed packages are not copied into these browser bundles.
 
 ## Runtime component receipt
 

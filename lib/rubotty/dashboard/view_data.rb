@@ -7,7 +7,7 @@ require "rubotty/dashboard/nav"
 
 module Rubotty
   module Dashboard
-    # The internal YAML surface: what one themed section of the dashboard is
+    # The internal YAML surface: what one client-rendered section of the dashboard is
     # drawn from, as plain string-keyed Ruby ready to be dumped as YAML.
     # Separate from the REST admin API on purpose: that one authenticates a
     # bearer key (developer or administrator scope), this one rides the
@@ -192,7 +192,7 @@ module Rubotty
       # plus the one grant its button spends. manage_lifecycle mirrors what
       # act_button already answers for the ERB start/stop form: nobody
       # outside Role::ADMINISTRATOR holds :manage_community_lifecycle, so a
-      # themed page has no other way to know whether to draw that button live.
+      # client-rendered page has no other way to know whether to draw that button live.
       def overview(slug)
         community = community!(slug)
         authorize!(:view_community, community)
@@ -219,7 +219,7 @@ module Rubotty
       # (true by construction, so a themed Open button still spends a real
       # grant) and manage_endpoints, which nobody outside
       # Role::ADMINISTRATOR ever holds since it is not in
-      # ActionPermissions::ACTIONS, a themed page having no other way to know.
+      # ActionPermissions::ACTIONS, a client-rendered page having no other way to know.
       def endpoints(slug)
         community = community!(slug)
         authorize!(:view_endpoints, community)
@@ -260,7 +260,7 @@ module Rubotty
       # live and archived, plus the one grant a themed enable/disable/delete
       # button spends. manage_scripts mirrors the ERB view's own act_button
       # call: like manage_endpoints, it is not in ActionPermissions::ACTIONS,
-      # so nobody outside Role::ADMINISTRATOR ever holds it and a themed page
+      # so nobody outside Role::ADMINISTRATOR ever holds it and a client-rendered page
       # has no other way to know that than being told.
       def scripts(slug)
         community = community!(slug)
@@ -743,7 +743,7 @@ module Rubotty
       # The guest portal: which rooms allow a guest at all, the link issue
       # form for those that do, and every invite issued so far. +issued_link+
       # is the one-time link the create route just minted, relayed here the
-      # way {#api_keys} relays a raw key: the themed draw replaces the body
+      # way {#api_keys} relays a raw key: the client render replaces the body
       # that would otherwise have spent the flash itself.
       def guests(slug, issued_link: nil, issued_nickname: nil)
         community = community!(slug)
@@ -1109,7 +1109,7 @@ module Rubotty
       # key rather than by a badge name: unlike {#badges} this is not an
       # attention flag, so a quiet section still gets a real zero instead of
       # nothing. Only the entries with a cheap, unambiguous count are here;
-      # a section with no themed page of its own yet (Moderation, Platforms)
+      # a section with no client-rendered page of its own yet (Moderation, Platforms)
       # has nothing this can total honestly.
       def counts(community)
         return {} if community.nil?
@@ -2638,7 +2638,7 @@ module Rubotty
 
       # What one script has been up to: its failure counter, its recorded
       # errors, its alerts and how many times it has run, read once for the
-      # themed page below it. Mirrors ViewController#script_activity, except
+      # client-rendered page below it. Mirrors ViewController#script_activity, except
       # every value here is already the text a reader sees rather than a raw
       # column a client-side formatter would have to know how to read.
       def script_activity_payload(script)

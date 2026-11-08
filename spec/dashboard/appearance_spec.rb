@@ -19,8 +19,8 @@ RSpec.describe "the fixed dashboard appearance", :control_plane do
 
   def expect_fixed_appearance(prefix = "")
     expect(last_response.status).to eq(200)
-    expect(last_response.body).to include("#{prefix}/theme-series-a.css", "#{prefix}/swatch-clay.css",
-                                        "#{prefix}/theme-runtime.js", "#{prefix}/chart-engine.js")
+    expect(last_response.body).to include("#{prefix}/dashboard.css", "#{prefix}/swatch-clay.css",
+                                        "#{prefix}/dashboard-runtime.js", "#{prefix}/chart-engine.js")
     expect(last_response.body).not_to include("code-monkey", "forest", "rough-viz", "settings/theme")
   end
 

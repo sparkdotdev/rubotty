@@ -154,7 +154,7 @@ module Rubotty
       # The breadcrumb for a page, deepest last, three entries at most since no
       # section nests deeper than a community and one of its pages (the last
       # carries no path). A renderer takes what it has room for: the pre-theme
-      # header draws the whole trail, Series A's topbar the last two.
+      # header draws the whole trail, the dashboard's topbar the last two.
       def crumbs(community:, title:, prefix: "")
         trail = []
         if community
